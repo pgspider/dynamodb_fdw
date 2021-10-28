@@ -1,0 +1,5 @@
+# dynamodb_fdw extension
+comment = 'foreign-data wrapper for DynamoDB'
+default_version = '1.0'
+module_pathname = '$libdir/dynamodb_fdw'
+relocatable = true
