@@ -26,8 +26,8 @@ extern "C"
 #define IS_KEY_EMPTY(key) \
 	(key == NULL || ((const Aws::String) key).size() == 0)
 
-extern Aws::DynamoDB::DynamoDBClient *dynamodbGetConnection(UserMapping *user);
+extern Aws::DynamoDB::DynamoDBClient *dynamodb_get_connection(UserMapping *user);
 extern void dynamodb_report_error(int elevel, const Aws::String message, char* query);
-extern void dynamodbReleaseConnection(Aws::DynamoDB::DynamoDBClient *dynamoDB_client);
+extern void dynamodb_release_connection(Aws::DynamoDB::DynamoDBClient *dynamoDB_client);
 
 #endif /* __DYNAMODB_FDW_HPP__ */

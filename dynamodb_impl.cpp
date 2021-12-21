@@ -34,6 +34,7 @@ extern "C"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
@@ -171,6 +172,7 @@ typedef struct DynamoDBFdwModifyState
 	/* for update row movement if subplan result rel */
 	struct DynamoDBFdwModifyState *aux_fmstate;	/* foreign-insert state, if
 											 * created */
+	AttrNumber *junk_idx;		/* indexes of key columns */
 } DynamoDBFdwModifyState;
 
 
@@ -289,15 +291,18 @@ dynamodbGetForeignRelSize(PlannerInfo *root,
 	fpinfo->rel_total_cost = -1;
 
 	/*
-	 * If the foreign table has never been ANALYZEd, it will have relpages
-	 * and reltuples equal to zero, which most likely has nothing to do
-	 * with reality.  We can't do a whole lot about that if we're not
+	 * If the foreign table has never been ANALYZEd, it will have
+	 * reltuples < 0, meaning "unknown".  We can't do much if we're not
 	 * allowed to consult the remote server, but we can use a hack similar
 	 * to plancat.c's treatment of empty relations: use a minimum size
 	 * estimate of 10 pages, and divide by the column-datatype-based width
 	 * estimate to get the corresponding number of tuples.
 	 */
+#if (PG_VERSION_NUM >= 140000)
+	if (baserel->tuples < 0)
+#else
 	if (baserel->pages == 0 && baserel->tuples == 0)
+#endif
 	{
 		baserel->pages = 10;
 		baserel->tuples =
@@ -364,7 +369,11 @@ dynamodb_estimate_path_cost_size(PlannerInfo *root,
 	 */
 	if (fpinfo->rel_startup_cost >= 0 && fpinfo->rel_total_cost >= 0)
 	{
+#if PG_VERSION_NUM >= 140000
+		Assert(fpinfo->retrieved_rows >= 0);
+#else
 		Assert(fpinfo->retrieved_rows >= 1);
+#endif
 
 		rows = fpinfo->rows;
 		retrieved_rows = fpinfo->retrieved_rows;
@@ -659,6 +668,59 @@ dynamodbGetForeignPlan(PlannerInfo *root,
 							outer_plan);
 }
 
+#if PG_VERSION_NUM >= 140000
+/*
+ * Construct a tuple descriptor for the scan tuples handled by a foreign join.
+ */
+static TupleDesc
+dynamodb_get_tupdesc_for_join_scan_tuples(ForeignScanState *node)
+{
+	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
+	EState	   *estate = node->ss.ps.state;
+	TupleDesc	tupdesc;
+
+	/*
+	 * The core code has already set up a scan tuple slot based on
+	 * fsplan->fdw_scan_tlist, and this slot's tupdesc is mostly good enough,
+	 * but there's one case where it isn't.  If we have any whole-row row
+	 * identifier Vars, they may have vartype RECORD, and we need to replace
+	 * that with the associated table's actual composite type.  This ensures
+	 * that when we read those ROW() expression values from the remote server,
+	 * we can convert them to a composite type the local server knows.
+	 */
+	tupdesc = CreateTupleDescCopy(node->ss.ss_ScanTupleSlot->tts_tupleDescriptor);
+	for (int i = 0; i < tupdesc->natts; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+		Var		   *var;
+		RangeTblEntry *rte;
+		Oid			reltype;
+
+		/* Nothing to do if it's not a generic RECORD attribute */
+		if (att->atttypid != RECORDOID || att->atttypmod >= 0)
+			continue;
+
+		/*
+		 * If we can't identify the referenced table, do nothing.  This'll
+		 * likely lead to failure later, but perhaps we can muddle through.
+		 */
+		var = (Var *) list_nth_node(TargetEntry, fsplan->fdw_scan_tlist,
+									i)->expr;
+		if (!IsA(var, Var) || var->varattno != 0)
+			continue;
+		rte = (RangeTblEntry *) list_nth(estate->es_range_table, var->varno - 1);
+		if (rte->rtekind != RTE_RELATION)
+			continue;
+		reltype = get_rel_type_id(rte->relid);
+		if (!OidIsValid(reltype))
+			continue;
+		att->atttypid = reltype;
+		/* shouldn't need to change anything else */
+	}
+	return tupdesc;
+}
+#endif
+
 /*
  * dynamodbBeginForeignScan
  *		Initiate an executor scan of a foreign DynamoDB table.
@@ -708,7 +770,7 @@ dynamodbBeginForeignScan(ForeignScanState *node, int eflags)
 	 * Get connection to the foreign server.  Connection manager will
 	 * establish new connection if necessary.
 	 */
-	fsstate->conn = dynamodbGetConnection(user);
+	fsstate->conn = dynamodb_get_connection(user);
 
 	/* Init data for cursor_exists as false */
 	fsstate->cursor_exists = false;
@@ -739,7 +801,11 @@ dynamodbBeginForeignScan(ForeignScanState *node, int eflags)
 	else
 	{
 		fsstate->rel = NULL;
+#if (PG_VERSION_NUM >= 140000)
+		fsstate->tupdesc = dynamodb_get_tupdesc_for_join_scan_tuples(node);
+#else
 		fsstate->tupdesc = node->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
+#endif
 	}
 
 }
@@ -816,7 +882,7 @@ dynamodbEndForeignScan(ForeignScanState *node)
 		return;
 
 	/* Release remote connection */
-	dynamodbReleaseConnection(fsstate->conn);
+	dynamodb_release_connection(fsstate->conn);
 	fsstate->conn = NULL;
 
 	/* MemoryContexts will be deleted automatically. */
@@ -824,7 +890,13 @@ dynamodbEndForeignScan(ForeignScanState *node)
 }
 
 extern "C" void
-dynamodbAddForeignUpdateTargets(Query *parsetree,
+dynamodbAddForeignUpdateTargets(
+#if (PG_VERSION_NUM >= 140000)
+								PlannerInfo *root,
+								Index rtindex,
+#else
+								Query *parsetree,
+#endif
 								RangeTblEntry *target_rte,
 								Relation target_relation)
 {
@@ -843,25 +915,32 @@ dynamodbAddForeignUpdateTargets(Query *parsetree,
 		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
 		Var		   *var;
 		char *attrname = NameStr(att->attname);
-		TargetEntry *tle;
 
 		if (strcmp(partition_key, attrname) == 0 ||
 			(!IS_KEY_EMPTY(sort_key) && strcmp(sort_key, attrname) == 0))
 		{
+#if PG_VERSION_NUM < 140000
+			Index	rtindex = parsetree->resultRelation;
+			TargetEntry *tle;
+#endif
 			/* Make a Var representing the desired value */
-			var = makeVar(parsetree->resultRelation,
+			var = makeVar(rtindex,
 							att->attnum,
 							att->atttypid,
 							att->atttypmod,
 							att->attcollation,
 							0);
-
+#if PG_VERSION_NUM >= 140000
+			/* Register it as a row-identity column needed by this target rel */
+			add_row_identity_var(root, var, rtindex, pstrdup(NameStr(att->attname)));
+#else
 			tle = makeTargetEntry((Expr *) var,
 								list_length(parsetree->targetList) + 1,
 								pstrdup(NameStr(att->attname)), true);
 
 			/* ... and add it to the query's targetlist */
 			parsetree->targetList = lappend(parsetree->targetList, tle);
+#endif
 		}
 	}
 }
@@ -922,7 +1001,6 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 		/*
 		 * DynamoDB only support updating column
 		 */
-		// pprint(root->parse->targetList);
 		foreach(lc, root->parse->targetList)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(lc);
@@ -1093,7 +1171,11 @@ dynamodbBeginForeignModify(ModifyTableState *mtstate,
 									rte,
 									resultRelInfo,
 									mtstate->operation,
+#if (PG_VERSION_NUM >= 140000)
+									outerPlanState(mtstate)->plan,
+#else
 									mtstate->mt_plans[subplan_index]->plan,
+#endif
 									query,
 									target_attrs,
 									has_returning,
@@ -1334,6 +1416,8 @@ dynamodb_create_foreign_modify(EState *estate,
 	Oid			userid;
 	ForeignTable *table;
 	UserMapping *user;
+	Oid			foreignTableId = RelationGetRelid(rel);
+	int			i;
 
 	/* Begin constructing DynamoDBFdwModifyState. */
 	fmstate = (DynamoDBFdwModifyState *) palloc0(sizeof(DynamoDBFdwModifyState));
@@ -1350,7 +1434,7 @@ dynamodb_create_foreign_modify(EState *estate,
 	user = GetUserMapping(userid, table->serverid);
 
 	/* Open connection; report that we'll create a prepared statement. */
-	fmstate->conn = dynamodbGetConnection(user);
+	fmstate->conn = dynamodb_get_connection(user);
 	fmstate->p_name = NULL;		/* prepared statement not made yet */
 
 	/* Set up remote query information. */
@@ -1366,6 +1450,19 @@ dynamodb_create_foreign_modify(EState *estate,
 
 	/* Initialize auxiliary state */
 	fmstate->aux_fmstate = NULL;
+
+	fmstate->junk_idx = (AttrNumber *) palloc0(RelationGetDescr(rel)->natts * sizeof(AttrNumber));
+	/* loop through table columns */
+	for (i = 0; i < RelationGetDescr(rel)->natts; ++i)
+	{
+		/*
+		 * for partition key and sort key columns, get the resjunk attribute number and store
+		 * it
+		 */
+		fmstate->junk_idx[i] =
+			ExecFindJunkAttributeInTlist(subplan->targetlist,
+										 get_attname(foreignTableId, i + 1, false));
+	}
 
 	return fmstate;
 }
@@ -1480,16 +1577,18 @@ dynamodb_execute_foreign_modify(EState *estate,
  	{
 		if (IS_KEY_EMPTY(partition_key))
 			elog(ERROR, "dynamodb_fdw: The partition_key option has not been set");
-		for (int i = 0; i < planSlot->tts_tupleDescriptor->natts ; i++)
+		for (int i = 0; i < slot->tts_tupleDescriptor->natts ; i++)
 		{
-			att = TupleDescAttr(planSlot->tts_tupleDescriptor, i);
+			att = TupleDescAttr(slot->tts_tupleDescriptor, i);
 			if (strcmp(opt->svr_partition_key, NameStr(att->attname)) == 0 ||
 				(!IS_KEY_EMPTY(sort_key) && strcmp(opt->svr_sort_key, NameStr(att->attname)) == 0))
 			{
 				bool 		isnull;
 
-				type = TupleDescAttr(planSlot->tts_tupleDescriptor, i)->atttypid;
-				value = slot_getattr(planSlot, i+1, &isnull);
+				/* Get the id that was passed up as a resjunk column */
+				value = ExecGetJunkAttribute(planSlot, fmstate->junk_idx[i], &isnull);
+				type = att->atttypid;
+
 				bindval = dynamodb_bind_sql_var(type, bindnum, value, fmstate->query, isnull);
 				values.push_back(bindval);
 				bindnum++;

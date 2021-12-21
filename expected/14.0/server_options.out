@@ -1,0 +1,77 @@
+\set ECHO none
+--Testcase 1:
+CREATE EXTENSION IF NOT EXISTS dynamodb_fdw;
+--Testcase 2:
+CREATE SERVER dynamodb_server FOREIGN DATA WRAPPER dynamodb_fdw
+  OPTIONS (endpoint :DYNAMODB_ENDPOINT);
+--Testcase 3:
+CREATE USER MAPPING FOR public SERVER dynamodb_server 
+  OPTIONS (user :DYNAMODB_USER, password :DYNAMODB_PASSWORD);
+-- Validate extension, server and mapping details
+--Testcase 4:
+SELECT e.fdwname AS "Extension", srvname AS "Server", s.srvoptions AS "Server_Options", u.umoptions AS "User_Mapping_Options"
+  FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
+  WHERE e.fdwname = 'dynamodb_fdw'
+  ORDER BY 1, 2, 3, 4;
+  Extension   |     Server      |          Server_Options          |      User_Mapping_Options       
+--------------+-----------------+----------------------------------+---------------------------------
+ dynamodb_fdw | dynamodb_server | {endpoint=http://localhost:8000} | {user=admin,password=testadmin}
+(1 row)
+
+-- Create foreign tables and perform basic SQL operations
+--Testcase 5:
+CREATE FOREIGN TABLE server_option_tbl (artist text, songtitle text, albumtitle text)
+  SERVER dynamodb_server OPTIONS (table_name 'server_option_tbl', partition_key 'artist', sort_key 'songtitle');
+--Testcase 6:
+SELECT artist, songtitle, albumtitle FROM server_option_tbl ORDER BY 1, 2;
+     artist      |      songtitle      |    albumtitle    
+-----------------+---------------------+------------------
+ Acme Band       | Happy Day           | Songs About Life
+ No One You Know | Call Me Today       | Somewhat Famous
+ No One You Know | Scared of My Shadow | Blue Sky Blues
+(3 rows)
+
+--Testcase 7:
+INSERT INTO server_option_tbl VALUES ('0000', 'nOBodY LiKE mE', 'RECORD INSERTED');
+--Testcase 8:
+SELECT artist, songtitle, albumtitle FROM server_option_tbl ORDER BY 1, 2;
+     artist      |      songtitle      |    albumtitle    
+-----------------+---------------------+------------------
+ 0000            | nOBodY LiKE mE      | RECORD INSERTED
+ Acme Band       | Happy Day           | Songs About Life
+ No One You Know | Call Me Today       | Somewhat Famous
+ No One You Know | Scared of My Shadow | Blue Sky Blues
+(4 rows)
+
+--Testcase 9:
+UPDATE server_option_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '0000';
+--Testcase 10:
+SELECT artist, songtitle, albumtitle FROM server_option_tbl ORDER BY 1, 2;
+     artist      |      songtitle      |    albumtitle    
+-----------------+---------------------+------------------
+ 0000            | nOBodY LiKE mE      | RECORD UPDATED
+ Acme Band       | Happy Day           | Songs About Life
+ No One You Know | Call Me Today       | Somewhat Famous
+ No One You Know | Scared of My Shadow | Blue Sky Blues
+(4 rows)
+
+--Testcase 11:
+DELETE FROM server_option_tbl WHERE artist = '0000';
+--Testcase 12:
+SELECT artist, songtitle, albumtitle FROM server_option_tbl ORDER BY 1, 2;
+     artist      |      songtitle      |    albumtitle    
+-----------------+---------------------+------------------
+ Acme Band       | Happy Day           | Songs About Life
+ No One You Know | Call Me Today       | Somewhat Famous
+ No One You Know | Scared of My Shadow | Blue Sky Blues
+(3 rows)
+
+-- Cleanup
+--Testcase 13:
+DROP FOREIGN TABLE server_option_tbl;
+--Testcase 14:
+DROP USER MAPPING FOR public SERVER dynamodb_server;
+--Testcase 15:
+DROP SERVER dynamodb_server;
+--Testcase 16:
+DROP EXTENSION dynamodb_fdw;

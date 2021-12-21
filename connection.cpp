@@ -69,6 +69,7 @@ typedef struct ConnCacheEntry
 static HTAB *ConnectionHash = NULL;
 
 /* prototypes of private functions */
+static void dynamodb_make_new_connection(ConnCacheEntry *entry, UserMapping *user);
 static Aws::DynamoDB::DynamoDBClient *dynamodb_create_connection(ForeignServer *server, UserMapping *user);
 static void dynamodb_check_conn_params(dynamodb_opt *opt);
 static void dynamodb_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
@@ -79,15 +80,16 @@ static void dynamodb_delete_client(Aws::DynamoDB::DynamoDBClient *dynamoDB_clien
 
 /* prototypes of public functions */
 extern void dynamodb_close_connection(ConnCacheEntry *entry);
+
 /*
- * dynamodbGetConnection
+ * dynamodb_get_connection
  *
  * Get a connection which can be used to execute queries on
  * the remote DynamoDB with the user's authorization. A new connection
  * is established if we don't already have a suitable one.
  */
 Aws::DynamoDB::DynamoDBClient *
-dynamodbGetConnection(UserMapping *user)
+dynamodb_get_connection(UserMapping *user)
 {
 	bool			found;
 	ConnCacheEntry *entry;
@@ -98,14 +100,22 @@ dynamodbGetConnection(UserMapping *user)
 	{
 		HASHCTL		ctl;
 
+#if PG_VERSION_NUM < 140000
 		MemSet(&ctl, 0, sizeof(ctl));
+#endif
 		ctl.keysize = sizeof(ConnCacheKey);
 		ctl.entrysize = sizeof(ConnCacheEntry);
+#if PG_VERSION_NUM < 140000
 		/* allocate ConnectionHash in the cache context */
 		ctl.hcxt = CacheMemoryContext;
+#endif
 		ConnectionHash = hash_create("dynamoDB_fdw connections", 8,
 									 &ctl,
+#if PG_VERSION_NUM >= 140000
+									 HASH_ELEM | HASH_BLOBS);
+#else
 									 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+#endif
 
 		/*
 		 * Register some callback functions that manage connection cleanup.
@@ -145,38 +155,41 @@ dynamodbGetConnection(UserMapping *user)
 	}
 
 	/*
-	 * We don't check the health of cached connection here, because it would
-	 * require some overhead.  Broken connection will be detected when the
-	 * connection is actually used.
-	 */
-
-	/*
 	 * If cache entry doesn't have a connection, we have to establish a new
 	 * connection.  (If connect_dynamo_server throws an error, the cache entry
 	 * will remain in a valid empty state, ie conn == NULL.)
 	 */
 	if (entry->conn == NULL)
-	{
-		ForeignServer *server = GetForeignServer(user->serverid);
-
-		/* Reset all transient state fields, to be sure all are clean */
-
-		entry->invalidated = false;
-		entry->server_hashvalue =
-			GetSysCacheHashValue1(FOREIGNSERVEROID,
-								  ObjectIdGetDatum(server->serverid));
-		entry->mapping_hashvalue =
-			GetSysCacheHashValue1(USERMAPPINGOID,
-								  ObjectIdGetDatum(user->umid));
-
-		/* Now try to make the connection */
-		entry->conn = dynamodb_create_connection(server, user);
-
-		elog(DEBUG3, "dynamodb_fdw: new dynamoDB_fdw connection %p for server \"%s\" (user mapping oid %u, userid %u)",
-			 entry->conn, server->servername, user->umid, user->userid);
-	}
+		dynamodb_make_new_connection(entry, user);
 
 	return entry->conn;
+}
+
+/*
+ * Reset all transient state fields in the cached connection entry and
+ * establish new connection to the remote server.
+ */
+static void
+dynamodb_make_new_connection(ConnCacheEntry *entry, UserMapping *user)
+{
+	ForeignServer *server = GetForeignServer(user->serverid);
+
+	Assert(entry->conn == NULL);
+
+	/* Reset all transient state fields, to be sure all are clean */
+	entry->invalidated = false;
+	entry->server_hashvalue =
+		GetSysCacheHashValue1(FOREIGNSERVEROID,
+								ObjectIdGetDatum(server->serverid));
+	entry->mapping_hashvalue =
+		GetSysCacheHashValue1(USERMAPPINGOID,
+								ObjectIdGetDatum(user->umid));
+
+	/* Now try to make the connection */
+	entry->conn = dynamodb_create_connection(server, user);
+
+	elog(DEBUG3, "dynamodb_fdw: new dynamoDB_fdw connection %p for server \"%s\" (user mapping oid %u, userid %u)",
+			entry->conn, server->servername, user->umid, user->userid);
 }
 
 /*
@@ -248,9 +261,12 @@ dynamodb_check_conn_params(dynamodb_opt *opt)
  * Connection invalidation callback function
  *
  * After a change to a pg_foreign_server or pg_user_mapping catalog entry,
- * mark connections depending on that entry as needing to be remade.
- * We can't immediately destroy them, since they might be in the midst of
- * a transaction, but we'll remake them at the next opportunity.
+ * close connections depending on that entry immediately if current transaction
+ * has not used those connections yet. Otherwise, mark those connections as
+ * invalid and then make pgfdw_xact_callback() close them at the end of current
+ * transaction, since they cannot be closed in the midst of the transaction
+ * using them. Closed connections will be remade at the next opportunity if
+ * necessary.
  *
  * Although most cache invalidation callbacks blow away all the related stuff
  * regardless of the given hashvalue, connections are expensive enough that
@@ -355,12 +371,12 @@ dynamodb_report_error(int elevel, const Aws::String message, char* query)
 }
 
 /*
- * dynamodbReleaseConnection
+ * dynamodb_release_connection
  *
  * Release connection reference count created by calling GetConnection.
  */
 void
-dynamodbReleaseConnection(Aws::DynamoDB::DynamoDBClient *dynamoDB_client)
+dynamodb_release_connection(Aws::DynamoDB::DynamoDBClient *dynamoDB_client)
 {
 	/*
 	 * Currently, we don't actually track connection references because all

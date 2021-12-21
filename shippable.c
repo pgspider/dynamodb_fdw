@@ -7,7 +7,7 @@
  * data types are shippable to a remote server for execution --- that is,
  * do they exist and have the same behavior remotely as they do locally?
  * Built-in objects are generally considered shippable.  Other objects can
- * be shipped if they are white-listed by the user.
+ * be shipped if they are declared as such by the user.
  *
  * Note: there are additional filter rules that prevent shipping mutable
  * functions or functions using nonportable collations.  Those considerations
@@ -93,7 +93,9 @@ InitializeShippableCache(void)
 	HASHCTL		ctl;
 
 	/* Create the hash table. */
+#if PG_VERSION_NUM < 140000
 	MemSet(&ctl, 0, sizeof(ctl));
+#endif
 	ctl.keysize = sizeof(ShippableCacheKey);
 	ctl.entrysize = sizeof(ShippableCacheEntry);
 	ShippableCacheHash =
@@ -111,7 +113,7 @@ InitializeShippableCache(void)
  *
  * Right now "shippability" is exclusively a function of whether the object
  * belongs to an extension declared by the user.  In the future we could
- * additionally have a whitelist of functions/operators declared one at a time.
+ * additionally have a list of functions/operators declared one at a time.
  */
 static bool
 dynamodb_lookup_shippable(Oid objectId, Oid classId, DynamoDBFdwRelationInfo *fpinfo)
