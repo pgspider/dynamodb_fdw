@@ -1,0 +1,3180 @@
+\set ECHO none
+--Testcase 1:
+CREATE EXTENSION IF NOT EXISTS dynamodb_fdw;
+--Testcase 2:
+CREATE SERVER dynamodb_server FOREIGN DATA WRAPPER dynamodb_fdw
+  OPTIONS (endpoint :DYNAMODB_ENDPOINT);
+--Testcase 3:
+CREATE USER MAPPING FOR public SERVER dynamodb_server 
+  OPTIONS (user :DYNAMODB_USER, password :DYNAMODB_PASSWORD);
+--constructors
+-- row_to_json
+--Testcase 4:
+CREATE FOREIGN TABLE rows ("ID" int, x int, y text)
+ SERVER dynamodb_server OPTIONS (table_name 'rows_jsonb', partition_key 'ID');
+--Testcase 5:
+EXPLAIN VERBOSE
+SELECT jsonb_agg(q ORDER BY x, y)
+  FROM rows q;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=131.45..131.46 rows=1 width=32)
+   Output: jsonb_agg(q.* ORDER BY x, y)
+   ->  Foreign Scan on public.rows q  (cost=100.00..129.80 rows=660 width=100)
+         Output: q.*, x, y
+         Remote SQL: SELECT ID, x, y FROM rows_jsonb
+(5 rows)
+
+--Testcase 6:
+SELECT jsonb_agg(q ORDER BY x, y)
+  FROM rows q;
+                                            jsonb_agg                                             
+--------------------------------------------------------------------------------------------------
+ [{"x": 1, "y": "txt1", "ID": 1}, {"x": 2, "y": "txt2", "ID": 2}, {"x": 3, "y": "txt3", "ID": 3}]
+(1 row)
+
+--Testcase 7:
+EXPLAIN VERBOSE
+UPDATE rows SET x = NULL WHERE x = 1;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Update on public.rows  (cost=100.00..121.21 rows=0 width=0)
+   Remote SQL: UPDATE rows_jsonb SET x = ? WHERE "ID" = ? 
+   ->  Foreign Scan on public.rows  (cost=100.00..121.21 rows=4 width=72)
+         Output: NULL::integer, "ID", rows.*
+         Remote SQL: SELECT ID, x, y FROM rows_jsonb WHERE (x = 1)
+(5 rows)
+
+--Testcase 8:
+UPDATE rows SET x = NULL WHERE x = 1;
+--Testcase 9:
+EXPLAIN VERBOSE
+SELECT jsonb_agg(q ORDER BY x NULLS FIRST, y)
+  FROM rows q;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=131.45..131.46 rows=1 width=32)
+   Output: jsonb_agg(q.* ORDER BY x NULLS FIRST, y)
+   ->  Foreign Scan on public.rows q  (cost=100.00..129.80 rows=660 width=100)
+         Output: q.*, x, y
+         Remote SQL: SELECT ID, x, y FROM rows_jsonb
+(5 rows)
+
+--Testcase 10:
+SELECT jsonb_agg(q ORDER BY x NULLS FIRST, y)
+  FROM rows q;
+                                              jsonb_agg                                              
+-----------------------------------------------------------------------------------------------------
+ [{"x": null, "y": "txt1", "ID": 1}, {"x": 2, "y": "txt2", "ID": 2}, {"x": 3, "y": "txt3", "ID": 3}]
+(1 row)
+
+-- jsonb extraction functions
+--Testcase 11:
+CREATE FOREIGN TABLE test_jsonb ("ID" int, json_type text, test_json jsonb)
+ SERVER dynamodb_server OPTIONS (table_name 'test_jsonb', partition_key 'ID');
+--Testcase 12:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'scalar';
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_jsonb WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 13:
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 14:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 15:
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 16:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'object';
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 17:
+SELECT test_json -> 'x' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 18:
+EXPLAIN VERBOSE
+SELECT test_json -> 'field2' FROM test_jsonb WHERE json_type = 'object';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 19:
+SELECT test_json -> 'field2' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ "val2"
+(1 row)
+
+--Testcase 20:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'scalar';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_jsonb WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 21:
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 22:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'array';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 23:
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 24:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'object';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 25:
+SELECT test_json ->> 'field2' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ val2
+(1 row)
+
+--Testcase 26:
+EXPLAIN VERBOSE
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'scalar';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 27:
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 28:
+EXPLAIN VERBOSE
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 29:
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ "two"
+(1 row)
+
+--Testcase 30:
+EXPLAIN VERBOSE
+SELECT test_json -> 9 FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 9))
+   Remote SQL: SELECT test_json[9], json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 31:
+SELECT test_json -> 9 FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 32:
+EXPLAIN VERBOSE
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'object';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 33:
+SELECT test_json -> 2 FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 34:
+EXPLAIN VERBOSE
+SELECT test_json ->> 6 FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 6))
+   Remote SQL: SELECT test_json[6], json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 35:
+SELECT test_json ->> 6 FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ [1,2,3]
+(1 row)
+
+--Testcase 36:
+EXPLAIN VERBOSE
+SELECT test_json ->> 7 FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 7))
+   Remote SQL: SELECT test_json[7], json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 37:
+SELECT test_json ->> 7 FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ {"f1":9}
+(1 row)
+
+--Testcase 38:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field4' FROM test_jsonb WHERE json_type = 'object';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field4'::text))
+   Remote SQL: SELECT test_json."field4", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 39:
+SELECT test_json ->> 'field4' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ 4
+(1 row)
+
+--Testcase 40:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field5' FROM test_jsonb WHERE json_type = 'object';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field5'::text))
+   Remote SQL: SELECT test_json."field5", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 41:
+SELECT test_json ->> 'field5' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ [1,2,3]
+(1 row)
+
+--Testcase 42:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field6' FROM test_jsonb WHERE json_type = 'object';
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field6'::text))
+   Remote SQL: SELECT test_json."field6", json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 43:
+SELECT test_json ->> 'field6' FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ {"f1":9}
+(1 row)
+
+--Testcase 44:
+EXPLAIN VERBOSE
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'scalar';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 45:
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 46:
+EXPLAIN VERBOSE
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 47:
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'array';
+ ?column? 
+----------
+ two
+(1 row)
+
+--Testcase 48:
+EXPLAIN VERBOSE
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'object';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 49:
+SELECT test_json ->> 2 FROM test_jsonb WHERE json_type = 'object';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 50:
+EXPLAIN VERBOSE
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'scalar';
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: jsonb_object_keys(test_json)
+   ->  Foreign Scan on public.test_jsonb  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'scalar')
+(5 rows)
+
+--Testcase 51:
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'scalar';
+ERROR:  cannot call jsonb_object_keys on a scalar
+--Testcase 52:
+EXPLAIN VERBOSE
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'array';
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: jsonb_object_keys(test_json)
+   ->  Foreign Scan on public.test_jsonb  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'array')
+(5 rows)
+
+--Testcase 53:
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'array';
+ERROR:  cannot call jsonb_object_keys on an array
+--Testcase 54:
+EXPLAIN VERBOSE
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'object';
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: jsonb_object_keys(test_json)
+   ->  Foreign Scan on public.test_jsonb  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'object')
+(5 rows)
+
+--Testcase 55:
+SELECT jsonb_object_keys(test_json) FROM test_jsonb WHERE json_type = 'object';
+ jsonb_object_keys 
+-------------------
+ field1
+ field2
+ field3
+ field4
+ field5
+ field6
+(6 rows)
+
+-- nulls
+--Testcase 56:
+EXPLAIN VERBOSE
+SELECT (test_json->'field3') IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'object';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json -> 'field3'::text) IS NULL)
+   Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 57:
+SELECT (test_json->'field3') IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'object';
+ expect_false 
+--------------
+ f
+(1 row)
+
+--Testcase 58:
+EXPLAIN VERBOSE
+SELECT (test_json->>'field3') IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'object';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json ->> 'field3'::text) IS NULL)
+   Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 59:
+SELECT (test_json->>'field3') IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'object';
+ expect_true 
+-------------
+ t
+(1 row)
+
+--Testcase 60:
+EXPLAIN VERBOSE
+SELECT (test_json->3) IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'array';
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json -> 3) IS NULL)
+   Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 61:
+SELECT (test_json->3) IS NULL AS expect_false FROM test_jsonb WHERE json_type = 'array';
+ expect_false 
+--------------
+ f
+(1 row)
+
+--Testcase 62:
+EXPLAIN VERBOSE
+SELECT (test_json->>3) IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'array';
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Foreign Scan on public.test_jsonb  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json ->> 3) IS NULL)
+   Remote SQL: SELECT test_json FROM test_jsonb WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 63:
+SELECT (test_json->>3) IS NULL AS expect_true FROM test_jsonb WHERE json_type = 'array';
+ expect_true 
+-------------
+ t
+(1 row)
+
+-- array exists - array elements should behave as keys
+--Testcase 64:
+CREATE FOREIGN TABLE testjsonb ("ID" int, j jsonb)
+ SERVER dynamodb_server OPTIONS (table_name 'testjsonb', partition_key 'ID');
+--Testcase 65:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) ? 'bar'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 66:
+SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
+ count 
+-------
+     3
+(1 row)
+
+-- type sensitive array exists - should return no rows (since "exists" only
+-- matches strings that are either object keys or array elements)
+--Testcase 67:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) ? '5'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 68:
+SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
+ count 
+-------
+     0
+(1 row)
+
+-- However, a raw scalar is *contained* within the array
+--Testcase 69:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) @> '5'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 70:
+SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
+ count 
+-------
+     1
+(1 row)
+
+-- indexing
+--Testcase 71:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": null}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 72:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 73:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC"}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 74:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 75:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC", "public": true}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 76:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 77:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 78:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 79:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25.0}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 80:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 81:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ? 'public';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ? 'public'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 82:
+SELECT count(*) FROM testjsonb WHERE j ? 'public';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 83:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ? 'bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ? 'bar'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 84:
+SELECT count(*) FROM testjsonb WHERE j ? 'bar';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 85:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ?| '{public,disabled}'::text[])
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 86:
+SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
+ count 
+-------
+    32
+(1 row)
+
+--Testcase 87:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ?& '{public,disabled}'::text[])
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 88:
+SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 89:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 90:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 91:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '("CC" == $."wait")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 92:
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 93:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == "CC" && true == $."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 94:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 95:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 96:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 97:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 98:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 99:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 100:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 101:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 102:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 103:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 104:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 105:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '(exists ($."public") || exists ($."disabled"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 106:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+ count 
+-------
+    32
+(1 row)
+
+--Testcase 107:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '(exists ($."public") && exists ($."disabled"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 108:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 109:
+EXPLAIN VERBOSE
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ERROR:  syntax error at or near "EXPLAIN"
+LINE 2: EXPLAIN VERBOSE
+        ^
+--Testcase 110:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 111:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?("CC" == @)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 112:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 113:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."wait" == "CC" && true == @."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 114:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 115:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."age"?(@ == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 116:
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 117:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 118:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 119:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 120:
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 121:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."public"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 122:
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 123:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."bar"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 124:
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 125:
+CREATE INDEX jidx ON testjsonb USING gin (j);
+ERROR:  cannot create index on foreign table "testjsonb"
+SET enable_seqscan = off;
+--Testcase 126:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": null}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 127:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 128:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC"}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 129:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 130:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC", "public": true}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 131:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 132:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 133:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 134:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25.0}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 135:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 136:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"array":["foo"]}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"array": ["foo"]}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 137:
+SELECT count(*) FROM testjsonb WHERE j @> '{"array":["foo"]}';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 138:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"array":["bar"]}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"array": ["bar"]}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 139:
+SELECT count(*) FROM testjsonb WHERE j @> '{"array":["bar"]}';
+ count 
+-------
+     3
+(1 row)
+
+-- exercise GIN_SEARCH_MODE_ALL
+--Testcase 140:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 141:
+SELECT count(*) FROM testjsonb WHERE j @> '{}';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 142:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ? 'public';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ? 'public'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 143:
+SELECT count(*) FROM testjsonb WHERE j ? 'public';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 144:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ? 'bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ? 'bar'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 145:
+SELECT count(*) FROM testjsonb WHERE j ? 'bar';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 146:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ?| '{public,disabled}'::text[])
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 147:
+SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
+ count 
+-------
+    32
+(1 row)
+
+--Testcase 148:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j ?& '{public,disabled}'::text[])
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 149:
+SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 150:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 151:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 152:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 153:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 154:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($?(@."wait" == null))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 155:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 156:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."wait"?(@ == null))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 157:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 158:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '("CC" == $."wait")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 159:
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 160:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == "CC" && true == $."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 161:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 162:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 163:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 164:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 165:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 166:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."array"[*] == "foo")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 167:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 168:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."array"[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 169:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 170:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($?(@."array"[*] == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 171:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 172:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."array"?(@[*] == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 173:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 174:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."array"[*]?(@ == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 175:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 176:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 177:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 178:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 179:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 180:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 181:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 182:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '(exists ($."public") || exists ($."disabled"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 183:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
+ count 
+-------
+    32
+(1 row)
+
+--Testcase 184:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '(exists ($."public") && exists ($."disabled"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 185:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 186:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?(@ == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 187:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 188:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?(@ == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 189:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 190:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?("CC" == @)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 191:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 192:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."wait" == "CC" && true == @."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 193:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 194:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."age"?(@ == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 195:
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 196:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 197:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 198:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."array"[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 199:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 200:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."array"?(@[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 201:
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 202:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."array"[*]?(@ == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 203:
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 204:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 205:
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 206:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."public"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 207:
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 208:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."bar"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 209:
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count 
+-------
+     0
+(1 row)
+
+-- array exists - array elements should behave as keys (for GIN index scans too)
+--Testcase 210:
+CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
+ERROR:  cannot create index on foreign table "testjsonb"
+--Testcase 211:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) ? 'bar'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 212:
+SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
+ count 
+-------
+     3
+(1 row)
+
+-- type sensitive array exists - should return no rows (since "exists" only
+-- matches strings that are either object keys or array elements)
+--Testcase 213:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) ? '5'::text)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 214:
+SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
+ count 
+-------
+     0
+(1 row)
+
+-- However, a raw scalar is *contained* within the array
+--Testcase 215:
+EXPLAIN VERBOSE
+SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=229.28..229.29 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..229.19 rows=34 width=0)
+         Output: "ID", j
+         Filter: ((testjsonb.j -> 'array'::text) @> '5'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 216:
+SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
+ count 
+-------
+     1
+(1 row)
+
+RESET enable_seqscan;
+--Testcase 217:
+EXPLAIN VERBOSE
+SELECT count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow;
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Aggregate  (cost=4550.82..4550.84 rows=1 width=8)
+   Output: count(*)
+   ->  Result  (cost=100.00..2723.32 rows=146200 width=32)
+         Output: ((jsonb_each(testjsonb.j))).key
+         ->  ProjectSet  (cost=100.00..895.83 rows=146200 width=32)
+               Output: jsonb_each(testjsonb.j)
+               ->  Foreign Scan on public.testjsonb  (cost=100.00..153.86 rows=1462 width=32)
+                     Output: testjsonb."ID", testjsonb.j
+                     Remote SQL: SELECT j FROM testjsonb
+(9 rows)
+
+--Testcase 218:
+SELECT count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow;
+ count 
+-------
+   433
+(1 row)
+
+--Testcase 219:
+EXPLAIN VERBOSE
+SELECT key, count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow GROUP BY key ORDER BY count DESC, key;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort  (cost=4925.97..4926.47 rows=200 width=40)
+   Output: (((jsonb_each(testjsonb.j))).key), (count(*))
+   Sort Key: (count(*)) DESC, (((jsonb_each(testjsonb.j))).key)
+   ->  HashAggregate  (cost=4916.32..4918.32 rows=200 width=40)
+         Output: (((jsonb_each(testjsonb.j))).key), count(*)
+         Group Key: ((jsonb_each(testjsonb.j))).key
+         ->  Result  (cost=100.00..2723.32 rows=146200 width=32)
+               Output: ((jsonb_each(testjsonb.j))).key
+               ->  ProjectSet  (cost=100.00..895.83 rows=146200 width=32)
+                     Output: jsonb_each(testjsonb.j)
+                     ->  Foreign Scan on public.testjsonb  (cost=100.00..153.86 rows=1462 width=32)
+                           Output: testjsonb."ID", testjsonb.j
+                           Remote SQL: SELECT j FROM testjsonb
+(13 rows)
+
+--Testcase 220:
+SELECT key, count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow GROUP BY key ORDER BY count DESC, key;
+    key    | count 
+-----------+-------
+ line      |    79
+ title     |    24
+ indexed   |    23
+ disabled  |    21
+ query     |    21
+ status    |    19
+ user      |    19
+ node      |    18
+ abstract  |    17
+ state     |    17
+ pos       |    16
+ space     |    16
+ date      |    15
+ world     |    15
+ org       |    14
+ subtitle  |    14
+ wait      |    14
+ cleaned   |    13
+ coauthors |    13
+ auth      |    12
+ public    |    12
+ bad       |    11
+ array     |     5
+ age       |     2
+ foo       |     2
+ fool      |     1
+(26 rows)
+
+-- sort/hash
+--Testcase 221:
+EXPLAIN VERBOSE
+SELECT count(distinct j) FROM testjsonb;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Aggregate  (cost=157.52..157.53 rows=1 width=8)
+   Output: count(DISTINCT j)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..153.86 rows=1462 width=32)
+         Output: "ID", j
+         Remote SQL: SELECT j FROM testjsonb
+(5 rows)
+
+--Testcase 222:
+SELECT count(distinct j) FROM testjsonb;
+ count 
+-------
+    87
+(1 row)
+
+SET enable_hashagg = off;
+--Testcase 223:
+EXPLAIN VERBOSE
+SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=507.79..507.80 rows=1 width=8)
+   Output: count(*)
+   ->  Group  (cost=490.67..505.29 rows=200 width=32)
+         Output: testjsonb.j
+         Group Key: testjsonb.j
+         ->  Sort  (cost=490.67..497.98 rows=2924 width=32)
+               Output: testjsonb.j
+               Sort Key: testjsonb.j
+               ->  Append  (cost=100.00..322.34 rows=2924 width=32)
+                     ->  Foreign Scan on public.testjsonb  (cost=100.00..153.86 rows=1462 width=32)
+                           Output: testjsonb.j
+                           Remote SQL: SELECT j FROM testjsonb
+                     ->  Foreign Scan on public.testjsonb testjsonb_1  (cost=100.00..153.86 rows=1462 width=32)
+                           Output: testjsonb_1.j
+                           Remote SQL: SELECT j FROM testjsonb
+(15 rows)
+
+--Testcase 224:
+SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
+ count 
+-------
+    88
+(1 row)
+
+SET enable_hashagg = on;
+SET enable_sort = off;
+--Testcase 225:
+EXPLAIN VERBOSE
+SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=334.15..334.16 rows=1 width=8)
+   Output: count(*)
+   ->  HashAggregate  (cost=329.65..331.65 rows=200 width=32)
+         Output: testjsonb.j
+         Group Key: testjsonb.j
+         ->  Append  (cost=100.00..322.34 rows=2924 width=32)
+               ->  Foreign Scan on public.testjsonb  (cost=100.00..153.86 rows=1462 width=32)
+                     Output: testjsonb.j
+                     Remote SQL: SELECT j FROM testjsonb
+               ->  Foreign Scan on public.testjsonb testjsonb_1  (cost=100.00..153.86 rows=1462 width=32)
+                     Output: testjsonb_1.j
+                     Remote SQL: SELECT j FROM testjsonb
+(12 rows)
+
+--Testcase 226:
+SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
+ count 
+-------
+    88
+(1 row)
+
+--Testcase 227:
+EXPLAIN VERBOSE
+SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ HashAggregate  (cost=0.03..0.05 rows=2 width=32)
+   Output: "*VALUES*".column1
+   Group Key: "*VALUES*".column1
+   ->  Values Scan on "*VALUES*"  (cost=0.00..0.03 rows=2 width=32)
+         Output: "*VALUES*".column1
+(5 rows)
+
+--Testcase 228:
+SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
+ j  
+----
+ {}
+(1 row)
+
+SET enable_sort = on;
+RESET enable_hashagg;
+RESET enable_sort;
+-- btree
+--Testcase 229:
+CREATE INDEX jidx ON testjsonb USING btree (j);
+ERROR:  cannot create index on foreign table "testjsonb"
+SET enable_seqscan = off;
+--Testcase 230:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=223.77..223.78 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.92 rows=1138 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j > '{"p": 1}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 231:
+SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';
+ count 
+-------
+    79
+(1 row)
+
+--Testcase 232:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "indexed":true}';
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=153.04..153.05 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..153.00 rows=17 width=0)
+         Output: "ID", j
+         Remote SQL: SELECT * FROM testjsonb WHERE (j = {'pos': 98,'line': 371,'node': 'CBA','indexed': TRUE})
+(5 rows)
+
+--Testcase 233:
+SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "indexed":true}';
+ count 
+-------
+     0
+(1 row)
+
+--gin path opclass
+--Testcase 234:
+DROP INDEX jidx;
+ERROR:  index "jidx" does not exist
+--Testcase 235:
+CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
+ERROR:  cannot create index on foreign table "testjsonb"
+SET enable_seqscan = off;
+--Testcase 236:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": null}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 237:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 238:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC"}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 239:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 240:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"wait": "CC", "public": true}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 241:
+SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC", "public":true}';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 242:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 243:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25}';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 244:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{"age": 25.0}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 245:
+SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
+ count 
+-------
+     2
+(1 row)
+
+-- exercise GIN_SEARCH_MODE_ALL
+--Testcase 246:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @> '{}';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @> '{}'::jsonb)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 247:
+SELECT count(*) FROM testjsonb WHERE j @> '{}';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 248:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 249:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 250:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($?(@."wait" == null))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 251:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.wait == null))';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 252:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."wait"?(@ == null))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 253:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.wait ? (@ == null))';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 254:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '("CC" == $."wait")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 255:
+SELECT count(*) FROM testjsonb WHERE j @@ '"CC" == $.wait';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 256:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."wait" == "CC" && true == $."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 257:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == "CC" && true == $.public';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 258:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 259:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 260:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 261:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.age == 25.0';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 262:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."array"[*] == "foo")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 263:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "foo"';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 264:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ '($."array"[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 265:
+SELECT count(*) FROM testjsonb WHERE j @@ '$.array[*] == "bar"';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 266:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($?(@."array"[*] == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 267:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($ ? (@.array[*] == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 268:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."array"?(@[*] == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 269:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array ? (@[*] == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 270:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($."array"[*]?(@ == "bar"))'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 271:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 272:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @@ 'exists ($)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 273:
+SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 274:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?(@ == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 275:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 276:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?(@ == null)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 277:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 278:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."wait"?("CC" == @)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 279:
+SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? ("CC" == @)';
+ count 
+-------
+     1
+(1 row)
+
+--Testcase 280:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."wait" == "CC" && true == @."public")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 281:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.wait == "CC" && true == @.public)';
+ count 
+-------
+     0
+(1 row)
+
+--Testcase 282:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."age"?(@ == 25)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 283:
+SELECT count(*) FROM testjsonb WHERE j @? '$.age ? (@ == 25)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 284:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."age" == 25.0)'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 285:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.age == 25.0)';
+ count 
+-------
+     2
+(1 row)
+
+--Testcase 286:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$?(@."array"[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 287:
+SELECT count(*) FROM testjsonb WHERE j @? '$ ? (@.array[*] == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 288:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."array"?(@[*] == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 289:
+SELECT count(*) FROM testjsonb WHERE j @? '$.array ? (@[*] == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 290:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."array"[*]?(@ == "bar")'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 291:
+SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
+ count 
+-------
+     3
+(1 row)
+
+--Testcase 292:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 293:
+SELECT count(*) FROM testjsonb WHERE j @? '$';
+ count 
+-------
+    89
+(1 row)
+
+--Testcase 294:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."public"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 295:
+SELECT count(*) FROM testjsonb WHERE j @? '$.public';
+ count 
+-------
+    12
+(1 row)
+
+--Testcase 296:
+EXPLAIN VERBOSE
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Aggregate  (cost=220.75..220.76 rows=1 width=8)
+   Output: count(*)
+   ->  Foreign Scan on public.testjsonb  (cost=100.00..220.66 rows=34 width=0)
+         Output: "ID", j
+         Filter: (testjsonb.j @? '$."bar"'::jsonpath)
+         Remote SQL: SELECT j FROM testjsonb
+(6 rows)
+
+--Testcase 297:
+SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
+ count 
+-------
+     0
+(1 row)
+
+RESET enable_seqscan;
+--Testcase 298:
+DROP INDEX jidx;
+ERROR:  index "jidx" does not exist
+--Testcase 299:
+CREATE FOREIGN TABLE foo (serial_num int, name text, type text)
+ SERVER dynamodb_server OPTIONS (table_name 'foo_jsonb', partition_key 'serial_num');
+--Testcase 300:
+EXPLAIN VERBOSE
+SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type)))
+FROM foo;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=141.15..141.16 rows=1 width=32)
+   Output: json_build_object('turbines', json_object_agg(serial_num, json_build_object('name', name, 'type', type)))
+   ->  Foreign Scan on public.foo  (cost=100.00..136.70 rows=890 width=68)
+         Output: serial_num, name, type
+         Remote SQL: SELECT serial_num, name, type FROM foo_jsonb
+(5 rows)
+
+--Testcase 301:
+SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type)))
+FROM foo;
+                                                                            json_build_object                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"turbines" : { "847001" : {"name" : "t15", "type" : "GE1043"}, "847002" : {"name" : "t16", "type" : "GE1043"}, "847003" : {"name" : "sub-alpha", "type" : "GESS90"} }}
+(1 row)
+
+--Testcase 302:
+EXPLAIN VERBOSE
+SELECT json_object_agg(name, type) FROM foo;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate  (cost=140.23..140.24 rows=1 width=32)
+   Output: json_object_agg(name, type)
+   ->  Foreign Scan on public.foo  (cost=100.00..137.90 rows=930 width=64)
+         Output: serial_num, name, type
+         Remote SQL: SELECT name, type FROM foo_jsonb
+(5 rows)
+
+--Testcase 303:
+SELECT json_object_agg(name, type) FROM foo;
+                        json_object_agg                         
+----------------------------------------------------------------
+ { "t15" : "GE1043", "t16" : "GE1043", "sub-alpha" : "GESS90" }
+(1 row)
+
+--Testcase 304:
+EXPLAIN VERBOSE
+INSERT INTO foo VALUES (999999, NULL, 'bar');
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Insert on public.foo  (cost=0.00..0.01 rows=0 width=0)
+   Remote SQL: INSERT INTO foo_jsonb VALUE {'serial_num' : ?, 'name' : ?, 'type' : ?};
+   ->  Result  (cost=0.00..0.01 rows=1 width=68)
+         Output: 999999, NULL::text, 'bar'::text
+(4 rows)
+
+--Testcase 305:
+INSERT INTO foo VALUES (999999, NULL, 'bar');
+--Testcase 306:
+EXPLAIN VERBOSE
+SELECT json_object_agg(name, type) FROM foo;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate  (cost=140.23..140.24 rows=1 width=32)
+   Output: json_object_agg(name, type)
+   ->  Foreign Scan on public.foo  (cost=100.00..137.90 rows=930 width=64)
+         Output: serial_num, name, type
+         Remote SQL: SELECT name, type FROM foo_jsonb
+(5 rows)
+
+--Testcase 307:
+SELECT json_object_agg(name, type) FROM foo;
+ERROR:  field name must not be null
+-- populate_record
+--Testcase 308:
+create type jpop as (a text, b int, c timestamp);
+ERROR:  type "jpop" already exists
+--Testcase 309:
+CREATE DOMAIN js_int_array_1d  AS int[]   CHECK(array_length(VALUE, 1) = 3);
+--Testcase 310:
+CREATE DOMAIN js_int_array_2d  AS int[][] CHECK(array_length(VALUE, 2) = 3);
+--Testcase 311:
+CREATE TYPE jsrec AS (
+	i int,
+	ia _int4,
+	ia1 int[],
+	ia2 int[][],
+	ia3 int[][][],
+	ia1d js_int_array_1d,
+	ia2d js_int_array_2d,
+	t text,
+	ta text[],
+	c char(10),
+	ca char(10)[],
+	ts timestamp,
+	js json,
+	jsb jsonb,
+	jsa json[],
+	rec jpop,
+	reca jpop[]
+);
+-- test type info caching in json_populate_record()
+--Testcase 312:
+CREATE FOREIGN TABLE jspoptest ("ID" int, js json)
+ SERVER dynamodb_server OPTIONS (table_name 'jspoptest', partition_key 'ID');
+--Testcase 313:
+EXPLAIN VERBOSE
+SELECT (json_populate_record(NULL::jsrec, js)).* FROM jspoptest;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.jspoptest  (cost=100.00..216.00 rows=1462 width=504)
+   Output: (json_populate_record(NULL::jsrec, js, false)).i, (json_populate_record(NULL::jsrec, js, false)).ia, (json_populate_record(NULL::jsrec, js, false)).ia1, (json_populate_record(NULL::jsrec, js, false)).ia2, (json_populate_record(NULL::jsrec, js, false)).ia3, (json_populate_record(NULL::jsrec, js, false)).ia1d, (json_populate_record(NULL::jsrec, js, false)).ia2d, (json_populate_record(NULL::jsrec, js, false)).t, (json_populate_record(NULL::jsrec, js, false)).ta, (json_populate_record(NULL::jsrec, js, false)).c, (json_populate_record(NULL::jsrec, js, false)).ca, (json_populate_record(NULL::jsrec, js, false)).ts, (json_populate_record(NULL::jsrec, js, false)).js, (json_populate_record(NULL::jsrec, js, false)).jsb, (json_populate_record(NULL::jsrec, js, false)).jsa, (json_populate_record(NULL::jsrec, js, false)).rec, (json_populate_record(NULL::jsrec, js, false)).reca
+   Remote SQL: SELECT js FROM jspoptest
+(3 rows)
+
+--Testcase 314:
+SELECT (json_populate_record(NULL::jsrec, js)).* FROM jspoptest;
+ i | ia | ia1 | ia2 | ia3 | ia1d | ia2d | t | ta | c | ca | ts | js | jsb |        jsa         |                rec                |                          reca                          
+---+----+-----+-----+-----+------+------+---+----+---+----+----+----+-----+--------------------+-----------------------------------+--------------------------------------------------------
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+(3 rows)
+
+--Testcase 315:
+DROP TYPE jsrec;
+--Testcase 316:
+DROP TYPE jsrec_i_not_null;
+ERROR:  type "jsrec_i_not_null" does not exist
+--Testcase 317:
+DROP DOMAIN js_int_array_1d;
+--Testcase 318:
+DROP DOMAIN js_int_array_2d;
+--Testcase 319:
+CREATE FOREIGN TABLE nestjsonb ("ID" int, j jsonb)
+ SERVER dynamodb_server OPTIONS (table_name 'nestjsonb', partition_key 'ID');
+--Testcase 320:
+create index on nestjsonb using gin(j jsonb_path_ops);
+ERROR:  cannot create index on foreign table "nestjsonb"
+set enable_seqscan = on;
+set enable_bitmapscan = off;
+--Testcase 321:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '{"a": [[{"x": 2}]]}'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 322:
+select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
+ ID |                         j                         
+----+---------------------------------------------------
+  1 | {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
+(1 row)
+
+--Testcase 323:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '{"c":3}';
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '{"c": 3}'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 324:
+select * from nestjsonb where j @> '{"c":3}';
+ ID |                         j                         
+----+---------------------------------------------------
+  1 | {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
+(1 row)
+
+--Testcase 325:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '[[14]]';
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '[[14]]'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 326:
+select * from nestjsonb where j @> '[[14]]';
+ ID |        j        
+----+-----------------
+  2 | [[2, 3, 14]]
+  3 | [1, [2, 3, 14]]
+(2 rows)
+
+set enable_seqscan = off;
+set enable_bitmapscan = on;
+--Testcase 327:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '{"a": [[{"x": 2}]]}'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 328:
+select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
+ ID |                         j                         
+----+---------------------------------------------------
+  1 | {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
+(1 row)
+
+--Testcase 329:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '{"c":3}';
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '{"c": 3}'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 330:
+select * from nestjsonb where j @> '{"c":3}';
+ ID |                         j                         
+----+---------------------------------------------------
+  1 | {"a": [["b", {"x": 1}], ["b", {"x": 2}]], "c": 3}
+(1 row)
+
+--Testcase 331:
+EXPLAIN VERBOSE
+select * from nestjsonb where j @> '[[14]]';
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on public.nestjsonb  (cost=100.00..154.36 rows=14 width=36)
+   Output: "ID", j
+   Filter: (nestjsonb.j @> '[[14]]'::jsonb)
+   Remote SQL: SELECT ID, j FROM nestjsonb
+(4 rows)
+
+--Testcase 332:
+select * from nestjsonb where j @> '[[14]]';
+ ID |        j        
+----+-----------------
+  2 | [[2, 3, 14]]
+  3 | [1, [2, 3, 14]]
+(2 rows)
+
+reset enable_seqscan;
+reset enable_bitmapscan;
+--Testcase 335:
+CREATE FOREIGN TABLE test_jsonb_subscript ("id" int, test_json jsonb)
+ SERVER dynamodb_server OPTIONS (table_name 'test_jsonb_subscript', partition_key 'id');
+--Testcase 336:
+insert into test_jsonb_subscript values
+(1, '{}'), -- empty jsonb
+(2, '{"key": "value"}'); -- jsonb with data
+-- use jsonb subscription in where clause
+--Testcase 337:
+select * from test_jsonb_subscript where test_json['key'] = '"value"';
+ id |    test_json     
+----+------------------
+  2 | {"key": "value"}
+(1 row)
+
+--Testcase 338:
+select * from test_jsonb_subscript where test_json['key_doesnt_exists'] = '"value"';
+ id | test_json 
+----+-----------
+(0 rows)
+
+--Testcase 339:
+select * from test_jsonb_subscript where test_json['key'] = '"wrong_value"';
+ id | test_json 
+----+-----------
+(0 rows)
+
+--Testcase 333:
+DROP USER MAPPING FOR public SERVER dynamodb_server;
+--Testcase 334:
+DROP EXTENSION dynamodb_fdw CASCADE;
+NOTICE:  drop cascades to 8 other objects
+DETAIL:  drop cascades to server dynamodb_server
+drop cascades to foreign table rows
+drop cascades to foreign table test_jsonb
+drop cascades to foreign table testjsonb
+drop cascades to foreign table foo
+drop cascades to foreign table jspoptest
+drop cascades to foreign table nestjsonb
+drop cascades to foreign table test_jsonb_subscript

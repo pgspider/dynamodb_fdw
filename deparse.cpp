@@ -1051,6 +1051,10 @@ dynamodb_pull_attribute_name_walker(Node *node, pull_attribute_name_context *con
 				RangeTblEntry  *rte = planner_rt_fetch(v->varno, context->root);
 				char		   *colname = NULL;
 
+				/* Skip if detect whole-row Var */
+				if (v->varattno == 0)
+					break;
+
 				colname = dynamodb_get_column_name(rte->relid, v->varattno);
 
 				if (context->attribute_name->len > 0)
@@ -2404,7 +2408,9 @@ dynamodb_tlist_has_json_arrow_op(PlannerInfo *root, RelOptInfo *baserel, List *t
 			if (strcmp(target_name, attr_name) == 0)
 				return false;
 		}
-		att_list = lappend(att_list, makeString(attr_name));
+		/* Only append if attr_name is not empty string */
+		if (attr_name[0] != '\0')
+			att_list = lappend(att_list, makeString(attr_name));
 	}
 
 	return json_op_safe;

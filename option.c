@@ -51,7 +51,6 @@ static struct DynamodbFdwOption valid_options[] =
 	{"password", UserMappingRelationId},
 	{"table_name", ForeignTableRelationId},
 	{"column_name", AttributeRelationId},
-
 	/* Sentinel */
 	{NULL, InvalidOid}
 };

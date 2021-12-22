@@ -8,4 +8,4 @@ sed -i 's/REGRESS =.*/REGRESS = server_options connection_validation pushdown ex
 make clean
 make
 mkdir -p results/extra
-make check | tee make_check.out
+make check $1| tee make_check.out

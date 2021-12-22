@@ -20,8 +20,7 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
  No One You Know | Scared of My Shadow | Blue Sky Blues
 (3 rows)
 
--- Drop foreign tables and create without partition_key and sort_key for 
--- foreign tables
+-- Drop foreign table and create it again without partition_key and sort_key
 --Testcase 6:
 DROP FOREIGN TABLE connection_tbl;
 --Testcase 7:
@@ -55,8 +54,7 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
  No One You Know | Scared of My Shadow | Blue Sky Blues
 (4 rows)
 
--- Drop foreign tables and create with invalid partition_key and valid sort_key for
--- foreign tables
+-- Drop foreign table and create it again with invalid partition_key and valid sort_key
 --Testcase 13:
 DROP FOREIGN TABLE connection_tbl;
 --Testcase 14:
@@ -77,7 +75,7 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
 INSERT INTO connection_tbl VALUES ('8', 'SomE oNe LiKE yOu', 'RECORD INSERTED');
 --Testcase 17:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
    sql=UPDATE connection_tbl SET albumtitle = ? WHERE "wrong" = ? AND "songtitle" = ?
 --Testcase 18:
 DELETE FROM connection_tbl WHERE artist = '8';
@@ -94,8 +92,7 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
  No One You Know | Scared of My Shadow | Blue Sky Blues
 (5 rows)
 
--- Drop foreign tables and create with valid partition_key and invalid sort_key for
--- foreign tables
+-- Drop foreign table and create it again with valid partition_key and invalid sort_key
 --Testcase 20:
 DROP FOREIGN TABLE connection_tbl;
 --Testcase 21:
@@ -120,7 +117,7 @@ ERROR:  dynamodb_fdw: failed to execute remote SQL: Duplicate primary key exists
 -- Should fail to update/delete the data with an error
 --Testcase 24:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
    sql=UPDATE connection_tbl SET albumtitle = ? WHERE "artist" = ? AND "wrong" = ?
 --Testcase 25:
 DELETE FROM connection_tbl WHERE artist = '8';

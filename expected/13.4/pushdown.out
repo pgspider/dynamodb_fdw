@@ -848,7 +848,7 @@ INSERT INTO array_test (array_s) VALUES ('{"too long"}');
 
 --Testcase 84:
 INSERT INTO array_test (array_s) VALUES ('{"too long"}');
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Invalid attribute value type 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Key attribute's data type should match its data type in table's schema: Key key_dy 
    sql=INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
 --Testcase 85:
 EXPLAIN VERBOSE 

@@ -73,7 +73,13 @@ extern void dynamodbBeginForeignScan(ForeignScanState *node, int eflags);
 extern TupleTableSlot *dynamodbIterateForeignScan(ForeignScanState *node);
 extern void dynamodbReScanForeignScan(ForeignScanState *node);
 extern void dynamodbEndForeignScan(ForeignScanState *node);
-extern void dynamodbAddForeignUpdateTargets(Query *parsetree,
+extern void dynamodbAddForeignUpdateTargets(
+#if (PG_VERSION_NUM >= 140000)
+											PlannerInfo *root,
+											Index rtindex,
+#else
+											Query *parsetree,
+#endif
 											RangeTblEntry *target_rte,
 											Relation target_relation);
 extern List *dynamodbPlanForeignModify(PlannerInfo *root,

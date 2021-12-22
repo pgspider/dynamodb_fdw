@@ -29,11 +29,10 @@ aws dynamodb delete-table --table-name students --endpoint-url $DYNAMODB_ENDPOIN
 aws dynamodb delete-table --table-name onek --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name foo_select --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name update_test --endpoint-url $DYNAMODB_ENDPOINT
-aws dynamodb delete-table --table-name upsert_test --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name classes --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name J1_TBL --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name J2_TBL --endpoint-url $DYNAMODB_ENDPOINT
-
+aws dynamodb delete-table --table-name test_jsonb_subscript --endpoint-url $DYNAMODB_ENDPOINT
 
 # for connection_validation.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
@@ -137,6 +136,11 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
         --key-schema AttributeName=ID,KeyType=HASH \
         --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
+        create-table --table-name test_jsonb_subscript \
+        --attribute-definitions AttributeName=id,AttributeType=N \
+        --key-schema AttributeName=id,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name jspoptest --item $'{"ID": {"N":"1"}, "js":{"M":{"jsa":{"L":[{"N":"1"}, {"S":"2"}, {"NULL":true}, {"N":"4"}]}, "rec":{"M":{"a":{"S":"abc"}, "c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}, "reca":{"L":[{"M":{"a":{"S":"abc"}, "b":{"N":"456"}}}, {"NULL":true}, {"M":{"c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}]}}}}'
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name jspoptest --item $'{"ID": {"N":"2"}, "js":{"M":{"jsa":{"L":[{"N":"1"}, {"S":"2"}, {"NULL":true}, {"N":"4"}]}, "rec":{"M":{"a":{"S":"abc"}, "c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}, "reca":{"L":[{"M":{"a":{"S":"abc"}, "b":{"N":"456"}}}, {"NULL":true}, {"M":{"c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}]}}}}'
@@ -337,7 +341,7 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name foo_jsonb -
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name foo_jsonb --item $'{"serial_num": {"N":"847003"}, "name":{"S":"sub-alpha"}, "type":{"S":"GESS90"}}'
 
 
-# for extra/nested_att_test.sql test
+# for extra/pushdown.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
         create-table --table-name students \
         --attribute-definitions AttributeName=ID,AttributeType=N \
@@ -488,14 +492,7 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
         --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
 
-aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
-        create-table --table-name upsert_test \
-        --attribute-definitions AttributeName=ID,AttributeType=N \
-        --key-schema AttributeName=ID,KeyType=HASH \
-        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
-
-
-# for extra/others.sql test
+# for extra/pushdown.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
         create-table --table-name classes \
         --attribute-definitions AttributeName=id,AttributeType=N \

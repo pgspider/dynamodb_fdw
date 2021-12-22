@@ -1082,6 +1082,23 @@ select * from nestjsonb where j @> '[[14]]';
 reset enable_seqscan;
 reset enable_bitmapscan;
 
+--Testcase 335:
+CREATE FOREIGN TABLE test_jsonb_subscript ("id" int, test_json jsonb)
+ SERVER dynamodb_server OPTIONS (table_name 'test_jsonb_subscript', partition_key 'id');
+
+--Testcase 336:
+insert into test_jsonb_subscript values
+(1, '{}'), -- empty jsonb
+(2, '{"key": "value"}'); -- jsonb with data
+
+-- use jsonb subscription in where clause
+--Testcase 337:
+select * from test_jsonb_subscript where test_json['key'] = '"value"';
+--Testcase 338:
+select * from test_jsonb_subscript where test_json['key_doesnt_exists'] = '"value"';
+--Testcase 339:
+select * from test_jsonb_subscript where test_json['key'] = '"wrong_value"';
+
 --Testcase 333:
 DROP USER MAPPING FOR public SERVER dynamodb_server;
 --Testcase 334:
