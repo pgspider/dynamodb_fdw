@@ -18,7 +18,7 @@
 #include "nodes/pathnodes.h"
 #include "utils/relcache.h"
 #include "catalog/pg_operator.h"
-#define CODE_VERSION 10100
+#define CODE_VERSION 10200
 
 /*
  * Options structure to store the dynamodb
@@ -96,15 +96,6 @@ typedef enum DynamoDBOperatorsSupport
 	OP_UNSUPPORT,
 } DynamoDBOperatorsSupport;
 
-/*
- * attr_entry: Store attribute information
- */
-typedef struct attr_entry
-{
-	const char *attrname;		/* Attribute name */
-	int			attrno;			/* Attribute number */
-}	attr_entry;
-
 /* in dynamodb_impl.cpp */
 extern int	dynamodb_set_transmission_modes(void);
 extern void dynamodb_reset_transmission_modes(int nestlevel);
@@ -127,12 +118,12 @@ extern void dynamodb_deparse_insert(StringInfo buf, RangeTblEntry *rte,
 extern void dynamodb_deparse_delete(StringInfo buf, RangeTblEntry *rte,
 				 		Index rtindex, Relation rel,
 				 		List *returningList,
-						List **retrieved_attrs);
+						List **retrieved_attrs, List *attnums);
 extern void dynamodb_deparse_update(StringInfo buf, RangeTblEntry *rte,
 							 Index rtindex, Relation rel,
 							 List *targetAttrs,
 							 List *withCheckOptionList, List *returningList,
-							 List **retrieved_attrs);
+							 List **retrieved_attrs, List *attnums);
 extern void dynamodb_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root,
 												RelOptInfo *foreignrel, List *tlist,
 												List *remote_conds, List *pathkeys,

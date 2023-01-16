@@ -38,11 +38,11 @@ EXPLAIN VERBOSE
 UPDATE rows SET x = NULL WHERE x = 1;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
- Update on public.rows  (cost=100.00..121.21 rows=0 width=0)
-   Remote SQL: UPDATE rows_jsonb SET x = ? WHERE "ID" = ? 
-   ->  Foreign Scan on public.rows  (cost=100.00..121.21 rows=4 width=72)
-         Output: NULL::integer, "ID", rows.*
-         Remote SQL: SELECT ID, x, y FROM rows_jsonb WHERE (x = 1)
+ Update on public.rows  (cost=100.00..127.20 rows=7 width=44)
+   Remote SQL: UPDATE rows_jsonb SET x = ? WHERE ID = ?
+   ->  Foreign Scan on public.rows  (cost=100.00..127.20 rows=7 width=44)
+         Output: "ID", NULL::integer, y, "ID"
+         Remote SQL: SELECT ID, y FROM rows_jsonb WHERE (x = 1)
 (5 rows)
 
 --Testcase 8:
@@ -2933,7 +2933,7 @@ EXPLAIN VERBOSE
 INSERT INTO foo VALUES (999999, NULL, 'bar');
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
- Insert on public.foo  (cost=0.00..0.01 rows=0 width=0)
+ Insert on public.foo  (cost=0.00..0.01 rows=1 width=68)
    Remote SQL: INSERT INTO foo_jsonb VALUE {'serial_num' : ?, 'name' : ?, 'type' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=68)
          Output: 999999, NULL::text, 'bar'::text
@@ -3148,23 +3148,13 @@ insert into test_jsonb_subscript values
 -- use jsonb subscription in where clause
 --Testcase 337:
 select * from test_jsonb_subscript where test_json['key'] = '"value"';
- id |    test_json     
-----+------------------
-  2 | {"key": "value"}
-(1 row)
-
+ERROR:  cannot subscript type jsonb because it is not an array
 --Testcase 338:
 select * from test_jsonb_subscript where test_json['key_doesnt_exists'] = '"value"';
- id | test_json 
-----+-----------
-(0 rows)
-
+ERROR:  cannot subscript type jsonb because it is not an array
 --Testcase 339:
 select * from test_jsonb_subscript where test_json['key'] = '"wrong_value"';
- id | test_json 
-----+-----------
-(0 rows)
-
+ERROR:  cannot subscript type jsonb because it is not an array
 --Testcase 333:
 DROP USER MAPPING FOR public SERVER dynamodb_server;
 --Testcase 334:

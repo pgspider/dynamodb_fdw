@@ -556,17 +556,17 @@ SELECT string_agg(name, ':' ORDER BY name), string_agg(description, ',' ORDER BY
 --Testcase 55:
 EXPLAIN VERBOSE
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM agg_tbl WHERE description IS NOT NULL GROUP BY description HAVING min(id) <> 0 ORDER BY description;
-                                                               QUERY PLAN                                                               
-----------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=179.99..200.00 rows=199 width=160)
-   Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
-   Group Key: agg_tbl.description
-   Filter: (min(agg_tbl.id) <> 0)
-   ->  Sort  (cost=179.99..182.21 rows=886 width=68)
-         Output: description, name, id
-         Sort Key: agg_tbl.description
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=162.01..162.51 rows=199 width=160)
+   Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description
+   Sort Key: agg_tbl.description
+   ->  HashAggregate  (cost=149.91..154.41 rows=199 width=160)
+         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
+         Group Key: agg_tbl.description
+         Filter: (min(agg_tbl.id) <> 0)
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..136.62 rows=886 width=68)
-               Output: description, name, id
+               Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
                Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (description IS NOT NULL)
 (10 rows)
 
@@ -1209,7 +1209,7 @@ DELETE FROM array_test WHERE array_n[2] IS NULL AND array_f IS NULL;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Delete on public.array_test  (cost=100.00..143.25 rows=0 width=0)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..143.25 rows=1 width=4)
          Output: key_dy
          Filter: (array_test.array_n[2] IS NULL)
@@ -1938,7 +1938,7 @@ DELETE FROM array_test;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Delete on public.array_test  (cost=100.00..197.75 rows=0 width=0)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
          Output: key_dy
          Remote SQL: SELECT key_dy FROM array_test
@@ -2270,7 +2270,7 @@ DELETE FROM array_test;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Delete on public.array_test  (cost=100.00..197.75 rows=0 width=0)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
          Output: key_dy
          Remote SQL: SELECT key_dy FROM array_test
@@ -3196,18 +3196,18 @@ SELECT id, name, description FROM mixed_types WHERE id IN (SELECT id FROM mixed_
 --Testcase 329:
 EXPLAIN VERBOSE 
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM mixed_types WHERE description IS NOT NULL GROUP BY name, description ORDER BY description LIMIT 1;
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=179.99..180.09 rows=1 width=192)
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=154.91..154.91 rows=1 width=192)
    Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
-   ->  GroupAggregate  (cost=179.99..199.50 rows=200 width=192)
-         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
-         Group Key: mixed_types.description, mixed_types.name
-         ->  Sort  (cost=179.99..182.21 rows=886 width=68)
-               Output: description, name, id
-               Sort Key: mixed_types.description, mixed_types.name
+   ->  Sort  (cost=154.91..155.41 rows=200 width=192)
+         Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
+         Sort Key: mixed_types.description
+         ->  HashAggregate  (cost=149.91..153.91 rows=200 width=192)
+               Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
+               Group Key: mixed_types.description, mixed_types.name
                ->  Foreign Scan on public.mixed_types  (cost=100.00..136.62 rows=886 width=68)
-                     Output: description, name, id
+                     Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
                      Remote SQL: SELECT id, name, description FROM mixed_types WHERE (description IS NOT NULL)
 (11 rows)
 
@@ -4803,7 +4803,7 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 28;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"majors": "Environment"}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 28)
@@ -4818,7 +4818,7 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = -1;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"majors": "Environment"}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = -1)
@@ -4832,7 +4832,7 @@ UPDATE classes SET courses = '{"majors": {"m1": "No1", "m2": "No2"}}' WHERE id =
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"majors": {"m1": "No1", "m2": "No2"}}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 27)
@@ -4846,7 +4846,7 @@ UPDATE classes SET courses = '{"key1": "|2FSo3FSo4*", "key2":[70356, 24708, 6842
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"key1": "|2FSo3FSo4*", "key2": [70356, 24708, 68429, -84248, -83370]}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 25)
@@ -4860,7 +4860,7 @@ DELETE FROM classes WHERE id = 26;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..146.86 rows=0 width=0)
-   Remote SQL: DELETE FROM classes WHERE id = ? 
+   Remote SQL: DELETE FROM classes WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 26)
@@ -4874,7 +4874,7 @@ DELETE FROM classes WHERE courses->'sub-majors' IS NULL AND id BETWEEN 25 AND 30
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..161.21 rows=0 width=0)
-   Remote SQL: DELETE FROM classes WHERE id = ? 
+   Remote SQL: DELETE FROM classes WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..161.21 rows=1 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (courses."sub-majors" IS NULL) AND (id >= 25) AND (id <= 30)
@@ -4901,7 +4901,7 @@ UPDATE classes SET courses = null WHERE id = 26;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: NULL::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 26)
@@ -4915,7 +4915,7 @@ UPDATE classes SET courses = '""' WHERE id = 25;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '""'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 25)
@@ -4929,7 +4929,7 @@ UPDATE classes SET courses = '[]' WHERE id = 27;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '[]'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 27)
@@ -4943,7 +4943,7 @@ UPDATE classes SET courses = '{}' WHERE id = 29;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 29)
@@ -5077,7 +5077,7 @@ SELECT name, id + score, score FROM classes WHERE score >= 0;
 
 --Testcase 533:
 EXPLAIN VERBOSE 
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Group  (cost=138.84..138.88 rows=4 width=72)
@@ -5093,7 +5093,7 @@ SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'
 (10 rows)
 
 --Testcase 534:
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
         name        |    score    
 --------------------+-------------
  Billie Lowery      |   15.045873
@@ -6472,7 +6472,7 @@ SELECT * FROM (SELECT id, name FROM classes WHERE id > 10) tbl GROUP BY id, name
 
 --Testcase 607:
 EXPLAIN VERBOSE 
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Group  (cost=126.76..127.03 rows=26 width=68)
@@ -6487,7 +6487,7 @@ SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN
 (9 rows)
 
 --Testcase 608:
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
  id |      name       |                       courses                       
 ----+-----------------+-----------------------------------------------------
   1 | Grant Delgado   | {"majors": "Math", "sub-majors": "Physics"}
@@ -6714,7 +6714,7 @@ SELECT majors, submajors, name FROM (SELECT courses->>'majors' AS majors, course
 
 --Testcase 621:
 EXPLAIN VERBOSE 
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Group  (cost=122.94..123.08 rows=8 width=137)
@@ -6729,7 +6729,7 @@ SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, co
 (9 rows)
 
 --Testcase 622:
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
      ?column?     | ?column? | isAtDorm |   score   
 ------------------+----------+----------+-----------
  Eleanor Barnesxx | History  | f        |  69.39961
@@ -6916,7 +6916,7 @@ SELECT courses->'majors', courses->'sub-majors' FROM classes WHERE id BETWEEN 10
 
 --Testcase 637:
 EXPLAIN VERBOSE 
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Group  (cost=122.92..122.96 rows=4 width=72)
@@ -6931,7 +6931,7 @@ SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name,
 (9 rows)
 
 --Testcase 638:
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
         name        |    score    |                       courses                       
 --------------------+-------------+-----------------------------------------------------
  Adrian Merrill     | -107.568385 | {"majors": "Biology", "sub-majors": "Chemistry"}
@@ -6973,7 +6973,7 @@ SELECT courses->>'majors', courses->>'sub-majors', name FROM classes WHERE id NO
 
 --Testcase 641:
 EXPLAIN VERBOSE 
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=122.78..122.83 rows=3 width=137)
@@ -6990,7 +6990,7 @@ SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHE
 (11 rows)
 
 --Testcase 642:
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
        ?column?        | ?column? | isAtDorm |   score   
 -----------------------+----------+----------+-----------
  Billie LowerysssssOW  | Math     | f        | 15.045873
@@ -7317,7 +7317,7 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 10 RETURNING
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=3 width=137)
    Output: id, "isAtDorm", score, courses
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ?  RETURNING ALL NEW *
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ? RETURNING ALL NEW *
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"majors": "Environment"}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 10)
@@ -7337,7 +7337,7 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 10 RETURNING
 --------------------------------------------------------------------------------------------
  Update on public.classes  (cost=100.00..118.00 rows=3 width=137)
    Output: id, name, "isAtDorm", score, courses
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ?  RETURNING ALL NEW *
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ? RETURNING ALL NEW *
    ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
          Output: '{"majors": "Environment"}'::jsonb, id, classes.*
          Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 10)
@@ -7357,7 +7357,7 @@ DELETE FROM classes WHERE id = 11 RETURNING id, "isAtDorm", score, courses;
 -----------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..146.86 rows=15 width=4)
    Output: id, "isAtDorm", score, courses
-   Remote SQL: DELETE FROM classes WHERE id = ?  RETURNING ALL OLD *
+   Remote SQL: DELETE FROM classes WHERE id = ? RETURNING ALL OLD *
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 11)
@@ -7377,7 +7377,7 @@ DELETE FROM classes WHERE id = 12 RETURNING *;
 -----------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..146.86 rows=15 width=4)
    Output: id, name, "isAtDorm", score, courses
-   Remote SQL: DELETE FROM classes WHERE id = ?  RETURNING ALL OLD *
+   Remote SQL: DELETE FROM classes WHERE id = ? RETURNING ALL OLD *
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 12)

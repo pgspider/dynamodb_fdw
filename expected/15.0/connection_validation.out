@@ -75,12 +75,12 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
 INSERT INTO connection_tbl VALUES ('8', 'SomE oNe LiKE yOu', 'RECORD INSERTED');
 --Testcase 17:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
-   sql=UPDATE connection_tbl SET albumtitle = ? WHERE "wrong" = ? AND "songtitle" = ?
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+   sql=UPDATE connection_tbl SET albumtitle = ? WHERE songtitle = ?
 --Testcase 18:
 DELETE FROM connection_tbl WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
-   sql=DELETE FROM connection_tbl WHERE wrong = ? AND songtitle = ? 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+   sql=DELETE FROM connection_tbl WHERE songtitle = ?
 --Testcase 19:
 SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
      artist      |      songtitle      |    albumtitle    
@@ -117,12 +117,12 @@ ERROR:  dynamodb_fdw: failed to execute remote SQL: Duplicate primary key exists
 -- Should fail to update/delete the data with an error
 --Testcase 24:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
-   sql=UPDATE connection_tbl SET albumtitle = ? WHERE "artist" = ? AND "wrong" = ?
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+   sql=UPDATE connection_tbl SET albumtitle = ? WHERE artist = ?
 --Testcase 25:
 DELETE FROM connection_tbl WHERE artist = '8';
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Number of parameters in request and statement don't match. 
-   sql=DELETE FROM connection_tbl WHERE artist = ? AND wrong = ? 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Where clause does not contain a mandatory equality on all key attributes 
+   sql=DELETE FROM connection_tbl WHERE artist = ?
 --Testcase 26:
 SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
      artist      |      songtitle      |    albumtitle    
@@ -151,7 +151,7 @@ ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connec
 --Testcase 30:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '1';
 ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connect to server 
-   sql=SELECT artist, songtitle FROM connection_tbl WHERE (artist = '1')
+   sql=SELECT artist, songtitle, albumtitle FROM connection_tbl WHERE (artist = '1')
 --Testcase 31:
 DELETE FROM connection_tbl WHERE artist = '1';
 ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connect to server 

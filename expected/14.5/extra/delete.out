@@ -55,7 +55,7 @@ DELETE FROM delete_test AS dt WHERE dt.a > 75;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Delete on public.delete_test dt  (cost=100.00..166.06 rows=0 width=0)
-   Remote SQL: DELETE FROM delete_test WHERE id = ? 
+   Remote SQL: DELETE FROM delete_test WHERE id = ?
    ->  Foreign Scan on public.delete_test dt  (cost=100.00..166.06 rows=975 width=4)
          Output: id
          Remote SQL: SELECT id FROM delete_test WHERE (a > 75)
@@ -71,7 +71,7 @@ DELETE FROM delete_test dt WHERE dt.a > 25;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Delete on public.delete_test dt  (cost=100.00..166.06 rows=0 width=0)
-   Remote SQL: DELETE FROM delete_test WHERE id = ? 
+   Remote SQL: DELETE FROM delete_test WHERE id = ?
    ->  Foreign Scan on public.delete_test dt  (cost=100.00..166.06 rows=975 width=4)
          Output: id
          Remote SQL: SELECT id FROM delete_test WHERE (a > 25)
@@ -103,7 +103,7 @@ DELETE FROM delete_test WHERE a > 25;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Delete on public.delete_test  (cost=100.00..166.06 rows=0 width=0)
-   Remote SQL: DELETE FROM delete_test WHERE id = ? 
+   Remote SQL: DELETE FROM delete_test WHERE id = ?
    ->  Foreign Scan on public.delete_test  (cost=100.00..166.06 rows=975 width=4)
          Output: id
          Remote SQL: SELECT id FROM delete_test WHERE (a > 25)

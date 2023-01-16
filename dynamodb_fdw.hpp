@@ -26,6 +26,8 @@ extern "C"
 #define IS_KEY_EMPTY(key) \
 	(key == NULL || ((const Aws::String) key).size() == 0)
 
+#define IS_KEY_COLUMN(attname, key_name)	(!IS_KEY_EMPTY(key_name) && strcmp(key_name, attname) == 0)
+
 extern Aws::DynamoDB::DynamoDBClient *dynamodb_get_connection(UserMapping *user);
 extern void dynamodb_report_error(int elevel, const Aws::String message, char* query);
 extern void dynamodb_release_connection(Aws::DynamoDB::DynamoDBClient *dynamoDB_client);

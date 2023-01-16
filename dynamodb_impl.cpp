@@ -67,6 +67,8 @@ using namespace Aws::DynamoDB;
 /* If no remote estimates, assume a sort costs 20% extra */
 #define DEFAULT_FDW_SORT_MULTIPLIER 1.2
 
+#define DYNAMODB_ALLOCATION_TAG "DYNAMODB_ALLOCATION_TAG"
+
 /*
  * Indexes of FDW-private information stored in fdw_private lists.
  *
@@ -98,7 +100,7 @@ enum FdwModifyPrivateIndex
 	FdwModifyPrivateUpdateSql,
 	/* Integer list of target attribute numbers for INSERT/UPDATE */
 	FdwModifyPrivateTargetAttnums,
-	/* has-returning flag (as an integer Value node) */
+	/* has-returning flag (as a Boolean node) */
 	FdwModifyPrivateHasReturning,
 	/* Integer list of attribute numbers retrieved by RETURNING */
 	FdwModifyPrivateRetrievedAttrs
@@ -146,7 +148,7 @@ typedef struct DynamoDBFdwScanState
 	unsigned int	row_index;			/* the index of current processing item in the result set */
 	bool			first_fetch;		/* true if the first time data is fetched */
 	unsigned int	num_rows;			/* number of rows in data set */
-	Aws::DynamoDB::Model::ExecuteStatementResult	   *result;	/* contains the result of query */
+	std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result;	/* contains the result of query */
 } DynamoDBFdwScanState;
 
 /*
@@ -197,7 +199,7 @@ extern DynamoDBFdwModifyState *dynamodb_create_foreign_modify(EState *estate,
 											   bool has_returning,
 											   List *retrieved_attrs);
 static void fetch_more_data(ForeignScanState *node);
-static HeapTuple make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStatementResult *result,
+static HeapTuple make_tuple_from_result_row(std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result,
 											unsigned int *row_index,
 											Relation rel,
 											List *retrieved_attrs,
@@ -205,7 +207,9 @@ static HeapTuple make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStateme
 											MemoryContext temp_context);
 static void dynamodb_store_returning_result(DynamoDBFdwModifyState *fmstate,
 											TupleTableSlot *slot,
-											Aws::DynamoDB::Model::ExecuteStatementResult *result);
+											std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result);
+static List *dynamodb_get_key_names(TupleDesc tupdesc, Oid foreignTableId, char *partition_key,
+											char *sort_key);
 /*
  * dynamodbGetForeignRelSize
  *		Estimate # of rows and width of the result of the scan
@@ -523,7 +527,7 @@ dynamodbGetForeignPlan(PlannerInfo *root,
 	List	   *local_exprs = NIL;
 	List	   *fdw_scan_tlist = NIL;
 	List	   *fdw_recheck_quals = NIL;
-	List	   *retrieved_attrs;
+	List	   *retrieved_attrs = NIL;
 	StringInfoData sql;
 	bool		tlist_has_json_arrow_op;
 	ListCell   *lc;
@@ -960,6 +964,13 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	List	   *withCheckOptionList = NIL; 
 	List	   *returningList = NIL; 
 	List	   *retrieved_attrs = NIL;
+	bool		trigger_update = false;
+	List	   *condAttr = NULL;
+	Oid			foreignTableId;
+	TupleDesc	tupdesc;
+	dynamodb_opt   *opt;
+	char		   *partition_key;
+	char		   *sort_key;
 
 	initStringInfo(&sql);
 
@@ -968,6 +979,12 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	 * use NoLock here.
 	 */
 	rel = table_open(rte->relid, NoLock);
+	foreignTableId = RelationGetRelid(rel);
+	tupdesc = RelationGetDescr(rel);
+
+	opt = dynamodb_get_options(foreignTableId);
+	partition_key = opt->svr_partition_key;
+	sort_key = opt -> svr_sort_key;
 
 	/*
 	 * In an INSERT, we transmit all columns that are defined in the foreign
@@ -980,13 +997,29 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	 * those triggers might change values for non-target columns, in which
 	 * case we would miss sending changed values for those columns.)
 	 */
-	if (operation == CMD_INSERT)
+	if (operation == CMD_UPDATE &&
+		 rel->trigdesc &&
+		 rel->trigdesc->trig_update_before_row)
+		 trigger_update = true;
+
+	if (operation == CMD_INSERT || trigger_update)
 	{
 		TupleDesc	tupdesc = RelationGetDescr(rel);
 		int			attnum;
+
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
 			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+			char *attrname = NameStr(attr->attname);
+
+			/*
+			 * DynamoDB does not allow to update key columns. Therefore, skip key column when
+			 * updating.
+			 */
+			if (trigger_update &&
+				((!IS_KEY_EMPTY(partition_key) && strcmp(partition_key, attrname) == 0) ||
+				 (!IS_KEY_EMPTY(sort_key) && strcmp(sort_key, attrname) == 0)))
+				continue;
 
 			if (!attr->attisdropped)
 				targetAttrs = lappend_int(targetAttrs, attnum);
@@ -1055,7 +1088,8 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 				 errmsg("dynamodb_fdw: unsupported feature ON CONFLICT")));
-	}	
+	}
+
 	/*
 	 * Construct the SQL command string.
 	 */
@@ -1066,13 +1100,19 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 									&retrieved_attrs);
 			break;
 		case CMD_UPDATE:
+		{
+			condAttr = dynamodb_get_key_names(tupdesc, foreignTableId, partition_key, sort_key);
 			dynamodb_deparse_update(&sql, rte, resultRelation, rel, targetAttrs,
-								    withCheckOptionList, returningList, &retrieved_attrs);
+									withCheckOptionList, returningList, &retrieved_attrs, condAttr);
 			break;
+		}
 		case CMD_DELETE:
+		{
+			condAttr = dynamodb_get_key_names(tupdesc, foreignTableId, partition_key, sort_key);
 			dynamodb_deparse_delete(&sql, rte, resultRelation, rel, returningList,
-							 	    &retrieved_attrs);
+									&retrieved_attrs, condAttr);
 			break;
+		}
 		default:
 			ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
@@ -1086,7 +1126,14 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	 * Build the fdw_private list that will be available to the executor.
 	 * Items in the list must match enum FdwModifyPrivateIndex, above.
 	 */
-	return list_make4(makeString(sql.data), targetAttrs, makeInteger((retrieved_attrs != NIL)), retrieved_attrs);	
+	return list_make4(makeString(sql.data),
+					  targetAttrs,
+#if PG_VERSION_NUM >= 150000
+					  makeBoolean((retrieved_attrs != NIL)),
+#else
+					  makeInteger((retrieved_attrs != NIL)),
+#endif
+					  retrieved_attrs);	
 }
 
 /*
@@ -1159,7 +1206,11 @@ dynamodbBeginForeignModify(ModifyTableState *mtstate,
 	/* Deconstruct fdw_private data. */
 	query = strVal(list_nth(fdw_private, FdwModifyPrivateUpdateSql));
 	target_attrs = (List *) list_nth(fdw_private, FdwModifyPrivateTargetAttnums);
+#if PG_VERSION_NUM >= 150000
+	has_returning = boolVal(list_nth(fdw_private, FdwModifyPrivateHasReturning));
+#else
 	has_returning = intVal(list_nth(fdw_private, FdwModifyPrivateHasReturning));
+#endif
 	retrieved_attrs = (List *) list_nth(fdw_private, FdwModifyPrivateRetrievedAttrs);
 
 	/* Find RTE. */
@@ -1244,7 +1295,7 @@ fetch_more_data(ForeignScanState *node)
 			{
 				Model::ExecuteStatementRequest req;
 				Aws::DynamoDB::Model::ExecuteStatementOutcome outcome;
-				Aws::DynamoDB::Model::ExecuteStatementResult *result = new Aws::DynamoDB::Model::ExecuteStatementResult();
+				std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result;
 
 				req.SetStatement(fsstate->query);
 
@@ -1259,8 +1310,7 @@ fetch_more_data(ForeignScanState *node)
 				if (!outcome.IsSuccess())
 					dynamodb_report_error(ERROR, outcome.GetError().GetMessage(), fsstate->query);
 
-				*result = outcome.GetResult();
-				fsstate->result = result;
+				result = Aws::MakeShared<Aws::DynamoDB::Model::ExecuteStatementResult>(DYNAMODB_ALLOCATION_TAG, outcome.GetResult());
 
 				if (result->GetItems().size() == 0)
 					has_more_rows = false;
@@ -1274,6 +1324,7 @@ fetch_more_data(ForeignScanState *node)
 				fsstate->next_fetch_ready = false;
 				fsstate->row_index = 0;
 				fsstate->num_rows = result->GetItems().size();
+				fsstate->result = std::move(result);
 			}
 		}
 
@@ -1311,7 +1362,7 @@ fetch_more_data(ForeignScanState *node)
 }
 
 static HeapTuple
-make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStatementResult *result,
+make_tuple_from_result_row(std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result,
 							unsigned int *row_index,
 							Relation rel,
 							List *retrieved_attrs,
@@ -1335,6 +1386,10 @@ make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStatementResult *result,
 	 */
 	oldcontext = MemoryContextSwitchTo(temp_context);
 
+	/*
+	 * Get the tuple descriptor for the row.  Use the rel's tupdesc if rel is
+	 * provided, otherwise look to the scan node's ScanTupleSlot.
+	 */
 	if (fsstate)
 		tupdesc = fsstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
 	else
@@ -1348,13 +1403,22 @@ make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStatementResult *result,
 	/* Get the row based on row index */
 	auto row = items.at(*row_index);
 
-	foreach(lc, retrieved_attrs)
+	lc = list_head(retrieved_attrs);
+
+	while (lc != NULL)
 	{
 		Oid			pgtype;
 		int32		pgtypmod;
-		attr_entry *attentry = (attr_entry *) lfirst(lc);
-		int			attnum = attentry->attrno - 1;
-		const char *attname = attentry->attrname;
+		const char *attname;
+		int			attnum;
+
+		/*
+		 * Attribute information are retrieved by a pair: first is attribute name,
+		 * next is attribute number.
+		 */
+		attname = strVal(lfirst(lc));
+		lc = lnext(retrieved_attrs, lc);
+		attnum = intVal(lfirst(lc)) - 1;
 
 		/*
 		 * Skip columns which are not returned from DynamoDB.
@@ -1376,6 +1440,7 @@ make_tuple_from_result_row(Aws::DynamoDB::Model::ExecuteStatementResult *result,
 														column.second);
 			}
 		}
+		lc = lnext(retrieved_attrs, lc);
 	}
 
 	/* Increase row index to prepare for next fetch */
@@ -1506,6 +1571,14 @@ dynamodb_set_transmission_modes(void)
 								 PGC_USERSET, PGC_S_SESSION,
 								 GUC_ACTION_SAVE, true, 0, false);
 
+	/*
+	 * In addition force restrictive search_path, in case there are any
+	 * regproc or similar constants to be printed.
+	 */
+	(void) set_config_option("search_path", "pg_catalog",
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
+
 	return nestlevel;
 }
 
@@ -1581,7 +1654,7 @@ dynamodb_execute_foreign_modify(EState *estate,
 		{
 			att = TupleDescAttr(slot->tts_tupleDescriptor, i);
 			if (strcmp(opt->svr_partition_key, NameStr(att->attname)) == 0 ||
-				(!IS_KEY_EMPTY(sort_key) && strcmp(opt->svr_sort_key, NameStr(att->attname)) == 0))
+				IS_KEY_COLUMN(NameStr(att->attname), sort_key))
 			{
 				bool 		isnull;
 
@@ -1606,7 +1679,7 @@ dynamodb_execute_foreign_modify(EState *estate,
 	/* Check number of rows affected, and fetch RETURNING tuple if any */
 	if (fmstate->has_returning)
 	{
-		Aws::DynamoDB::Model::ExecuteStatementResult *result = new Aws::DynamoDB::Model::ExecuteStatementResult();
+		std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result(new Aws::DynamoDB::Model::ExecuteStatementResult());
 
 		*result = outcome.GetResult();
 		dynamodb_store_returning_result(fmstate, slot, result);
@@ -1626,7 +1699,7 @@ dynamodb_execute_foreign_modify(EState *estate,
 static void
 dynamodb_store_returning_result(DynamoDBFdwModifyState *fmstate,
 								TupleTableSlot *slot,
-								Aws::DynamoDB::Model::ExecuteStatementResult *result)
+								std::shared_ptr<Aws::DynamoDB::Model::ExecuteStatementResult> result)
 {
 	HeapTuple	newtup;
 	unsigned int index = 0;
@@ -1713,4 +1786,45 @@ dynamodbEndForeignModify(EState *estate,
 	{
 		fmstate->query = NULL;
 	}
+}
+
+extern "C" void
+dynamodbBeginForeignInsert(ModifyTableState *mtstate,
+							ResultRelInfo *resultRelInfo)
+{
+	ereport(ERROR,
+            (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+             errmsg("COPY and foreign partition routing not supported in dynamodb_fdw")));
+}
+
+extern "C" void
+dynamodbEndForeignInsert(EState *estate,
+						ResultRelInfo *resultRelInfo)
+{
+	ereport(ERROR,
+            (errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+             errmsg("COPY and foreign partition routing not supported in dynamodb_fdw")));
+}
+
+/*
+ * dynamodb_get_key_names
+ * 		Add all primary key attribute names to condAttr used in where clause of update
+ */
+static List *
+dynamodb_get_key_names(TupleDesc tupdesc, Oid foreignTableId, char *partition_key, char *sort_key)
+{
+	List *condAttr = NIL;
+	int			i;
+
+	for (i = 0; i < tupdesc->natts; ++i)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+		AttrNumber	attrno = att->attnum;
+		char	   *colname = get_attname(foreignTableId, attrno, false);
+
+		if (IS_KEY_COLUMN(colname, partition_key) || IS_KEY_COLUMN(colname, sort_key))
+			condAttr = lappend_int(condAttr, attrno);
+	}
+
+	return condAttr;
 }

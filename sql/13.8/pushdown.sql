@@ -1533,9 +1533,9 @@ SELECT name, id + score, score FROM classes WHERE score >= 0;
 
 --Testcase 533:
 EXPLAIN VERBOSE 
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
 --Testcase 534:
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
 
 --Testcase 535:
 EXPLAIN VERBOSE 
@@ -1761,9 +1761,9 @@ SELECT * FROM (SELECT id, name FROM classes WHERE id > 10) tbl GROUP BY id, name
 
 --Testcase 607:
 EXPLAIN VERBOSE 
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
 --Testcase 608:
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
 
 --Testcase 609:
 EXPLAIN VERBOSE 
@@ -1803,9 +1803,9 @@ SELECT majors, submajors, name FROM (SELECT courses->>'majors' AS majors, course
 
 --Testcase 621:
 EXPLAIN VERBOSE 
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
 --Testcase 622:
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
 
 --Testcase 623:
 EXPLAIN VERBOSE 
@@ -1852,9 +1852,9 @@ SELECT courses->'majors', courses->'sub-majors' FROM classes WHERE id BETWEEN 10
 
 --Testcase 637:
 EXPLAIN VERBOSE 
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
 --Testcase 638:
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
 
 --Testcase 639:
 EXPLAIN VERBOSE 
@@ -1864,9 +1864,9 @@ SELECT courses->>'majors', courses->>'sub-majors', name FROM classes WHERE id NO
 
 --Testcase 641:
 EXPLAIN VERBOSE 
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
 --Testcase 642:
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
 
 --Testcase 643:
 EXPLAIN VERBOSE 
