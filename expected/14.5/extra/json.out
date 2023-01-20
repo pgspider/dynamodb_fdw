@@ -91,7 +91,7 @@ UPDATE rows SET x = NULL WHERE x = 1;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Update on public.rows  (cost=100.00..121.21 rows=0 width=0)
-   Remote SQL: UPDATE rows_json SET x = ? WHERE "ID" = ? 
+   Remote SQL: UPDATE rows_json SET x = ? WHERE ID = ?
    ->  Foreign Scan on public.rows  (cost=100.00..121.21 rows=4 width=72)
          Output: NULL::integer, "ID", rows.*
          Remote SQL: SELECT ID, x, y FROM rows_json WHERE (x = 1)

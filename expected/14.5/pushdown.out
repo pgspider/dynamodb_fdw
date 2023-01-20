@@ -46,7 +46,7 @@ EXPLAIN VERBOSE
 SELECT stddev_pop('nan'::float8), stddev_samp('nan'::float8) FROM agg_tbl;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=229.46..229.47 rows=1 width=16)
+ Aggregate  (cost=220.93..220.94 rows=1 width=16)
    Output: stddev_pop('NaN'::double precision), stddev_samp('NaN'::double precision)
    ->  Foreign Scan on public.agg_tbl  (cost=100.00..212.39 rows=3413 width=0)
          Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
@@ -84,7 +84,7 @@ EXPLAIN VERBOSE
 SELECT var_pop('nan'::numeric), var_samp('nan'::numeric) FROM agg_tbl;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=229.46..229.47 rows=1 width=64)
+ Aggregate  (cost=220.93..220.94 rows=1 width=64)
    Output: var_pop('NaN'::numeric), var_samp('NaN'::numeric)
    ->  Foreign Scan on public.agg_tbl  (cost=100.00..212.39 rows=3413 width=0)
          Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
@@ -103,7 +103,7 @@ EXPLAIN VERBOSE
 SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric) FROM agg_tbl;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=229.46..229.47 rows=1 width=64)
+ Aggregate  (cost=220.93..220.94 rows=1 width=64)
    Output: stddev_pop('NaN'::numeric), stddev_samp('NaN'::numeric)
    ->  Foreign Scan on public.agg_tbl  (cost=100.00..212.39 rows=3413 width=0)
          Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
@@ -196,7 +196,7 @@ EXPLAIN VERBOSE
 SELECT BOOL_AND(id > 0), BOOL_AND(NOT id <= 0), BOOL_OR(id = 0), BOOL_OR(NOT id != 0), EVERY(id >= 0), EVERY(NOT id <> 0) FROM agg_tbl;
                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=285.50..285.51 rows=1 width=6)
+ Aggregate  (cost=256.25..256.26 rows=1 width=6)
    Output: bool_and((id > 0)), bool_and((id > 0)), bool_or((id = 0)), bool_or((id = 0)), every((id >= 0)), every((id = 0))
    ->  Foreign Scan on public.agg_tbl  (cost=100.00..197.75 rows=2925 width=4)
          Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
@@ -360,7 +360,7 @@ EXPLAIN VERBOSE
 SELECT stddev_pop(score), stddev_samp(score), stddev(score) FROM agg_tbl WHERE id IN (3887, 2891, 2747);
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=146.25..146.26 rows=1 width=24)
+ Aggregate  (cost=146.06..146.07 rows=1 width=24)
    Output: stddev_pop(score), stddev_samp(score), stddev(score)
    ->  Foreign Scan on public.agg_tbl  (cost=100.00..145.96 rows=38 width=8)
          Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
@@ -811,7 +811,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test (key_dy, array_n[1:5], array_s[1:1], array_f, array_jn, array_js, array_jf) VALUES (11, '{1,2,3,4,5}', '{"AAAAA33250", "AAAAAAAAAAAAAAAAAAA85420", "AAAAAAAAAAA33576"}', '{}', '{}', '{}', '{}');
                                                                        QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 11, '{1,2,3,4,5}'::integer[], '{AAAAA33250}'::text[], '{}'::double precision[], '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
@@ -840,7 +840,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test (array_s) VALUES ('{"too long"}');
                                                                        QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: NULL::integer, NULL::integer[], '{"too long"}'::text[], NULL::double precision[], NULL::jsonb, NULL::jsonb, NULL::jsonb
@@ -855,7 +855,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test (key_dy, array_n, array_s[2:2], array_f, array_jn, array_js, array_jf) VALUES (12, '{11,12}', '{"`3gOJ9gOJ3"}', '{"63764.41485008047", "-38626.05345625236"}', '{"key1": "|2FSo3FSo4*", "key2":[70356, 24708, 68429, -84248, -83370]}', '{"key1": "~4YMW4YMW6|", "key2":["`3wSi5wSi8!"]}', '{"key1": "~4YMW4YMW6|", "key2":{"key22": [-76224.64548801386, 28668.41368482083]}}');
                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                   
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 12, '{11,12}'::integer[], '[2:2]={`3gOJ9gOJ3}'::text[], '{63764.41485008047,-38626.05345625236}'::double precision[], '{"key1": "|2FSo3FSo4*", "key2": [70356, 24708, 68429, -84248, -83370]}'::jsonb, '{"key1": "~4YMW4YMW6|", "key2": ["`3wSi5wSi8!"]}'::jsonb, '{"key1": "~4YMW4YMW6|", "key2": {"key22": [-76224.64548801386, 28668.41368482083]}}'::jsonb
@@ -868,7 +868,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test (key_dy, array_n, array_s, array_f) VALUES (13, '{3,4}', '{"AAAAAA98232", "AAAA49534", "AAAAAAAAAAA21658"}', '{-79846.26103075403}');
                                                                                   QUERY PLAN                                                                                   
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 13, '{3,4}'::integer[], '{AAAAAA98232,AAAA49534,AAAAAAAAAAA21658}'::text[], '{-79846.26103075403}'::double precision[], NULL::jsonb, NULL::jsonb, NULL::jsonb
@@ -879,26 +879,26 @@ INSERT INTO array_test (key_dy, array_n, array_s, array_f) VALUES (13, '{3,4}', 
 --Testcase 89:
 EXPLAIN VERBOSE 
 INSERT INTO array_test (key_dy, array_n[2]) VALUES(14, now());  -- error, type mismatch
-ERROR:  array assignment to "array_n" requires type integer but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "array_n" requires type integer but expression is of type timestamp with time zone
 LINE 2: INSERT INTO array_test (key_dy, array_n[2]) VALUES(14, now()...
                                         ^
 HINT:  You will need to rewrite or cast the expression.
 --Testcase 90:
 INSERT INTO array_test (key_dy, array_n[2]) VALUES(14, now());  -- error, type mismatch
-ERROR:  array assignment to "array_n" requires type integer but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "array_n" requires type integer but expression is of type timestamp with time zone
 LINE 1: INSERT INTO array_test (key_dy, array_n[2]) VALUES(14, now()...
                                         ^
 HINT:  You will need to rewrite or cast the expression.
 --Testcase 91:
 EXPLAIN VERBOSE 
 INSERT INTO array_test (key_dy, array_n[1:2]) VALUES(15, now());  -- error, type mismatch
-ERROR:  array assignment to "array_n" requires type integer[] but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "array_n" requires type integer[] but expression is of type timestamp with time zone
 LINE 2: INSERT INTO array_test (key_dy, array_n[1:2]) VALUES(15, now...
                                         ^
 HINT:  You will need to rewrite or cast the expression.
 --Testcase 92:
 INSERT INTO array_test (key_dy, array_n[1:2]) VALUES(15, now());  -- error, type mismatch
-ERROR:  array assignment to "array_n" requires type integer[] but expression is of type timestamp with time zone
+ERROR:  subscripted assignment to "array_n" requires type integer[] but expression is of type timestamp with time zone
 LINE 1: INSERT INTO array_test (key_dy, array_n[1:2]) VALUES(15, now...
                                         ^
 HINT:  You will need to rewrite or cast the expression.
@@ -1142,7 +1142,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test(key_dy, array_n) VALUES(16, '{1,null,3}');
                                                                        QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 16, '{1,NULL,3}'::integer[], NULL::text[], NULL::double precision[], NULL::jsonb, NULL::jsonb, NULL::jsonb
@@ -1208,8 +1208,8 @@ EXPLAIN VERBOSE
 DELETE FROM array_test WHERE array_n[2] IS NULL AND array_f IS NULL;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Delete on public.array_test  (cost=100.00..143.25 rows=1 width=4)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+ Delete on public.array_test  (cost=100.00..143.25 rows=0 width=0)
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..143.25 rows=1 width=4)
          Output: key_dy
          Filter: (array_test.array_n[2] IS NULL)
@@ -1570,7 +1570,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test VALUES(17, NULL, NULL);
                                                                        QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 17, NULL::integer[], NULL::text[], NULL::double precision[], NULL::jsonb, NULL::jsonb, NULL::jsonb
@@ -1591,7 +1591,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test VALUES(18, NULL, NULL, NULL, NULL, NULL, NULL);
                                                                        QUERY PLAN                                                                        
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 18, NULL::integer[], NULL::text[], NULL::double precision[], NULL::jsonb, NULL::jsonb, NULL::jsonb
@@ -1937,8 +1937,8 @@ EXPLAIN VERBOSE
 DELETE FROM array_test;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Delete on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+ Delete on public.array_test  (cost=100.00..197.75 rows=0 width=0)
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
          Output: key_dy
          Remote SQL: SELECT key_dy FROM array_test
@@ -1951,7 +1951,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test VALUES(19, array[1,2,null,4], array['one','two',null,'four'], array[551.2121, 5125.5, 45.2, -45.36],'{"key1": "-0vkD1vkD1", "key2": [-82239, -27568]}', '{"key1": "^4jzR6jzR8.", "key2": ["}6tUr7tUr9<", " <4khS2khS9_", " #1HvE5HvE2", " #8qnh4qnh3<"]}', '{"key1": "_4TbU3TbU1@", "key2": {"key22": [65201.37933343978, -43867.89668332935, 89612.16240976125, 93294.21355107482]}}');
                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 19, '{1,2,NULL,4}'::integer[], '{one,two,NULL,four}'::text[], '{551.2121,5125.5,45.2,-45.36}'::double precision[], '{"key1": "-0vkD1vkD1", "key2": [-82239, -27568]}'::jsonb, '{"key1": "^4jzR6jzR8.", "key2": ["}6tUr7tUr9<", " <4khS2khS9_", " #1HvE5HvE2", " #8qnh4qnh3<"]}'::jsonb, '{"key1": "_4TbU3TbU1@", "key2": {"key22": [65201.37933343978, -43867.89668332935, 89612.16240976125, 93294.21355107482]}}'::jsonb
@@ -2269,8 +2269,8 @@ EXPLAIN VERBOSE
 DELETE FROM array_test;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Delete on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
-   Remote SQL: DELETE FROM array_test WHERE key_dy = ? 
+ Delete on public.array_test  (cost=100.00..197.75 rows=0 width=0)
+   Remote SQL: DELETE FROM array_test WHERE key_dy = ?
    ->  Foreign Scan on public.array_test  (cost=100.00..197.75 rows=2925 width=4)
          Output: key_dy
          Remote SQL: SELECT key_dy FROM array_test
@@ -2283,7 +2283,7 @@ EXPLAIN VERBOSE
 INSERT INTO array_test VALUES(20, array[1,2,null,4], array['one','two',null,'four'], array[551.2121, 5125.5, 45.2, -45.36],'{"key1": "-0vkD1vkD1", "key2": [-82239, -27568]}', '{"key1": "^4jzR6jzR8.", "key2": ["}6tUr7tUr9<", " <4khS2khS9_", " #1HvE5HvE2", " #8qnh4qnh3<"]}', '{"key1": "_4TbU3TbU1@", "key2": {"key22": [65201.37933343978, -43867.89668332935, 89612.16240976125, 93294.21355107482]}}');
                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.array_test  (cost=0.00..0.01 rows=1 width=196)
+ Insert on public.array_test  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO array_test VALUE {'key_dy' : ?, 'array_n' : ?, 'array_s' : ?, 'array_f' : ?, 'array_jn' : ?, 'array_js' : ?, 'array_jf' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=196)
          Output: 20, '{1,2,NULL,4}'::integer[], '{one,two,NULL,four}'::text[], '{551.2121,5125.5,45.2,-45.36}'::double precision[], '{"key1": "-0vkD1vkD1", "key2": [-82239, -27568]}'::jsonb, '{"key1": "^4jzR6jzR8.", "key2": ["}6tUr7tUr9<", " <4khS2khS9_", " #1HvE5HvE2", " #8qnh4qnh3<"]}'::jsonb, '{"key1": "_4TbU3TbU1@", "key2": {"key22": [65201.37933343978, -43867.89668332935, 89612.16240976125, 93294.21355107482]}}'::jsonb
@@ -3791,7 +3791,7 @@ EXPLAIN VERBOSE
 SELECT sum((friends->'login'->>'last_score')::float), avg((friends->'class_info'->>'score_rand')::float), stddev((friends->'class_info'->>'score_rand')::float)/2 FROM students WHERE "ID" > 0;
                                                                                                                                         QUERY PLAN                                                                                                                                         
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=156.28..156.29 rows=1 width=24)
+ Aggregate  (cost=150.20..150.21 rows=1 width=24)
    Output: sum((((friends -> 'login'::text) ->> 'last_score'::text))::double precision), avg((((friends -> 'class_info'::text) ->> 'score_rand'::text))::double precision), (stddev((((friends -> 'class_info'::text) ->> 'score_rand'::text))::double precision) / '2'::double precision)
    ->  Foreign Scan on public.students  (cost=100.00..138.02 rows=487 width=32)
          Output: "ID", name, friends
@@ -4724,7 +4724,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes VALUES (25, 'Halla Hue', true, 3.26, '{"majors": "IT", "sub-majors": "Networking"}');
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 25, 'Halla Hue'::text, true, '3.26'::double precision, '{"majors": "IT", "sub-majors": "Networking"}'::jsonb
@@ -4737,7 +4737,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes (id, name, courses) VALUES (26, 'Anna Hat', '{"majors": "Astronomy", "sub-majors": ""}');
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 26, 'Anna Hat'::text, NULL::boolean, NULL::double precision, '{"majors": "Astronomy", "sub-majors": ""}'::jsonb
@@ -4750,7 +4750,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes (id, courses) VALUES (27, null);
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 27, NULL::text, NULL::boolean, NULL::double precision, NULL::jsonb
@@ -4763,7 +4763,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes (id, name, score, courses) VALUES (28, 'Welling Jr', 23.12, '{"majors": null, "sub-majors": "Chemistry"}');
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 28, 'Welling Jr'::text, NULL::boolean, '23.12'::double precision, '{"majors": null, "sub-majors": "Chemistry"}'::jsonb
@@ -4776,7 +4776,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes VALUES (29, 'HASHKEYS KEEP', false, 23.12);
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 29, 'HASHKEYS KEEP'::text, false, '23.12'::double precision, NULL::jsonb
@@ -4789,7 +4789,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes VALUES (30, 'Zone Diana', true, 45.2, '{"majors": "Archeology", "sub-majors": "Adventure"}');
                                                               QUERY PLAN                                                              
 --------------------------------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 30, 'Zone Diana'::text, true, '45.2'::double precision, '{"majors": "Archeology", "sub-majors": "Adventure"}'::jsonb
@@ -4800,13 +4800,13 @@ INSERT INTO classes VALUES (30, 'Zone Diana', true, 45.2, '{"majors": "Archeolog
 --Testcase 451:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 28;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"majors": "Environment"}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 28)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"majors": "Environment"}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 28)
 (5 rows)
 
 --Testcase 452:
@@ -4815,13 +4815,13 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 28;
 -- Should faild
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = -1;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"majors": "Environment"}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = -1)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"majors": "Environment"}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = -1)
 (5 rows)
 
 --Testcase 454:
@@ -4829,13 +4829,13 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = -1;
 --Testcase 457:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"majors": {"m1": "No1", "m2": "No2"}}' WHERE id = 27;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"majors": {"m1": "No1", "m2": "No2"}}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 27)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"majors": {"m1": "No1", "m2": "No2"}}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 27)
 (5 rows)
 
 --Testcase 458:
@@ -4843,13 +4843,13 @@ UPDATE classes SET courses = '{"majors": {"m1": "No1", "m2": "No2"}}' WHERE id =
 --Testcase 459:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"key1": "|2FSo3FSo4*", "key2":[70356, 24708, 68429, -84248, -83370]}' WHERE id = 25;
-                                                            QUERY PLAN                                                            
-----------------------------------------------------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"key1": "|2FSo3FSo4*", "key2": [70356, 24708, 68429, -84248, -83370]}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 25)
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"key1": "|2FSo3FSo4*", "key2": [70356, 24708, 68429, -84248, -83370]}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 25)
 (5 rows)
 
 --Testcase 460:
@@ -4859,8 +4859,8 @@ EXPLAIN VERBOSE
 DELETE FROM classes WHERE id = 26;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
- Delete on public.classes  (cost=100.00..146.86 rows=15 width=4)
-   Remote SQL: DELETE FROM classes WHERE id = ? 
+ Delete on public.classes  (cost=100.00..146.86 rows=0 width=0)
+   Remote SQL: DELETE FROM classes WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 26)
@@ -4873,8 +4873,8 @@ EXPLAIN VERBOSE
 DELETE FROM classes WHERE courses->'sub-majors' IS NULL AND id BETWEEN 25 AND 30;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
- Delete on public.classes  (cost=100.00..161.21 rows=1 width=4)
-   Remote SQL: DELETE FROM classes WHERE id = ? 
+ Delete on public.classes  (cost=100.00..161.21 rows=0 width=0)
+   Remote SQL: DELETE FROM classes WHERE id = ?
    ->  Foreign Scan on public.classes  (cost=100.00..161.21 rows=1 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (courses."sub-majors" IS NULL) AND (id >= 25) AND (id <= 30)
@@ -4887,7 +4887,7 @@ EXPLAIN VERBOSE
 INSERT INTO classes (id, name, courses) VALUES (26, 'Anna Hat', '{"majors": "Astronomy", "sub-majors": ""}');
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------------------------------------------------------------------
- Insert on public.classes  (cost=0.00..0.01 rows=1 width=77)
+ Insert on public.classes  (cost=0.00..0.01 rows=0 width=0)
    Remote SQL: INSERT INTO classes VALUE {'id' : ?, 'name' : ?, 'isAtDorm' : ?, 'score' : ?, 'courses' : ?};
    ->  Result  (cost=0.00..0.01 rows=1 width=77)
          Output: 26, 'Anna Hat'::text, NULL::boolean, NULL::double precision, '{"majors": "Astronomy", "sub-majors": ""}'::jsonb
@@ -4898,13 +4898,13 @@ INSERT INTO classes (id, name, courses) VALUES (26, 'Anna Hat', '{"majors": "Ast
 --Testcase 467:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = null WHERE id = 26;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, NULL::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 26)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: NULL::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 26)
 (5 rows)
 
 --Testcase 468:
@@ -4912,13 +4912,13 @@ UPDATE classes SET courses = null WHERE id = 26;
 --Testcase 469:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '""' WHERE id = 25;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '""'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 25)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '""'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 25)
 (5 rows)
 
 --Testcase 470:
@@ -4926,13 +4926,13 @@ UPDATE classes SET courses = '""' WHERE id = 25;
 --Testcase 471:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '[]' WHERE id = 27;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '[]'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 27)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '[]'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 27)
 (5 rows)
 
 --Testcase 472:
@@ -4940,13 +4940,13 @@ UPDATE classes SET courses = '[]' WHERE id = 27;
 --Testcase 473:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{}' WHERE id = 29;
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ? 
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 29)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=0 width=0)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ?
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 29)
 (5 rows)
 
 --Testcase 474:
@@ -5077,7 +5077,7 @@ SELECT name, id + score, score FROM classes WHERE score >= 0;
 
 --Testcase 533:
 EXPLAIN VERBOSE 
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Group  (cost=138.84..138.88 rows=4 width=72)
@@ -5093,7 +5093,7 @@ SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'
 (10 rows)
 
 --Testcase 534:
-SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math';
+SELECT name, score FROM classes GROUP BY name, score, courses HAVING courses->>'majors' = 'Math' ORDER BY name, score;
         name        |    score    
 --------------------+-------------
  Billie Lowery      |   15.045873
@@ -6472,7 +6472,7 @@ SELECT * FROM (SELECT id, name FROM classes WHERE id > 10) tbl GROUP BY id, name
 
 --Testcase 607:
 EXPLAIN VERBOSE 
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Group  (cost=126.76..127.03 rows=26 width=68)
@@ -6487,7 +6487,7 @@ SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN
 (9 rows)
 
 --Testcase 608:
-SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses;
+SELECT id, name, courses FROM (SELECT id, name, courses FROM classes WHERE id IN (1, 3, 4, 5, 8, 9)) tbl GROUP BY id, name, courses ORDER BY id, name, courses;
  id |      name       |                       courses                       
 ----+-----------------+-----------------------------------------------------
   1 | Grant Delgado   | {"majors": "Math", "sub-majors": "Physics"}
@@ -6714,7 +6714,7 @@ SELECT majors, submajors, name FROM (SELECT courses->>'majors' AS majors, course
 
 --Testcase 621:
 EXPLAIN VERBOSE 
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Group  (cost=122.94..123.08 rows=8 width=137)
@@ -6729,7 +6729,7 @@ SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, co
 (9 rows)
 
 --Testcase 622:
-SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm";
+SELECT name || 'xx', courses->>'majors', "isAtDorm", score FROM (SELECT name, courses, "isAtDorm", score FROM classes WHERE id = 1 OR id = 7) tbl GROUP BY courses, name, score, "isAtDorm" ORDER BY courses, name, score, "isAtDorm";
      ?column?     | ?column? | isAtDorm |   score   
 ------------------+----------+----------+-----------
  Eleanor Barnesxx | History  | f        |  69.39961
@@ -6916,7 +6916,7 @@ SELECT courses->'majors', courses->'sub-majors' FROM classes WHERE id BETWEEN 10
 
 --Testcase 637:
 EXPLAIN VERBOSE 
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Group  (cost=122.92..122.96 rows=4 width=72)
@@ -6931,7 +6931,7 @@ SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name,
 (9 rows)
 
 --Testcase 638:
-SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses LIMIT NULL;
+SELECT name, score, courses FROM classes WHERE id > 5 AND id < 15 GROUP BY name, score, courses ORDER BY name, score, courses LIMIT NULL;
         name        |    score    |                       courses                       
 --------------------+-------------+-----------------------------------------------------
  Adrian Merrill     | -107.568385 | {"majors": "Biology", "sub-majors": "Chemistry"}
@@ -6973,7 +6973,7 @@ SELECT courses->>'majors', courses->>'sub-majors', name FROM classes WHERE id NO
 
 --Testcase 641:
 EXPLAIN VERBOSE 
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=122.78..122.83 rows=3 width=137)
@@ -6990,7 +6990,7 @@ SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHE
 (11 rows)
 
 --Testcase 642:
-SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score LIMIT 3;
+SELECT name || 'sssssOW', courses->>'majors', "isAtDorm", score FROM classes WHERE score > 0 AND score < 6564.15 GROUP BY name, courses, "isAtDorm", score ORDER BY name, courses, "isAtDorm", score LIMIT 3;
        ?column?        | ?column? | isAtDorm |   score   
 -----------------------+----------+----------+-----------
  Billie LowerysssssOW  | Math     | f        | 15.045873
@@ -7313,14 +7313,14 @@ SELECT name, id + score, score FROM classes GROUP BY (id + score), name, score L
 --Testcase 671:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 10 RETURNING id, "isAtDorm", score, courses;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=3 width=137)
    Output: id, "isAtDorm", score, courses
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ?  RETURNING ALL NEW *
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"majors": "Environment"}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 10)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ? RETURNING ALL NEW *
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"majors": "Environment"}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 10)
 (6 rows)
 
 --Testcase 672:
@@ -7333,14 +7333,14 @@ UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 10 RETURNING
 --Testcase 673:
 EXPLAIN VERBOSE 
 UPDATE classes SET courses = '{"majors": "Environment"}' WHERE id = 10 RETURNING *;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- Update on public.classes  (cost=100.00..124.96 rows=6 width=81)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Update on public.classes  (cost=100.00..118.00 rows=3 width=137)
    Output: id, name, "isAtDorm", score, courses
-   Remote SQL: UPDATE classes SET courses = ? WHERE "id" = ?  RETURNING ALL NEW *
-   ->  Foreign Scan on public.classes  (cost=100.00..124.96 rows=6 width=81)
-         Output: id, name, "isAtDorm", score, '{"majors": "Environment"}'::jsonb, id
-         Remote SQL: SELECT id, name, isAtDorm, score FROM classes WHERE (id = 10)
+   Remote SQL: UPDATE classes SET courses = ? WHERE id = ? RETURNING ALL NEW *
+   ->  Foreign Scan on public.classes  (cost=100.00..118.00 rows=3 width=137)
+         Output: '{"majors": "Environment"}'::jsonb, id, classes.*
+         Remote SQL: SELECT id, name, isAtDorm, score, courses FROM classes WHERE (id = 10)
 (6 rows)
 
 --Testcase 674:
@@ -7357,7 +7357,7 @@ DELETE FROM classes WHERE id = 11 RETURNING id, "isAtDorm", score, courses;
 -----------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..146.86 rows=15 width=4)
    Output: id, "isAtDorm", score, courses
-   Remote SQL: DELETE FROM classes WHERE id = ?  RETURNING ALL OLD *
+   Remote SQL: DELETE FROM classes WHERE id = ? RETURNING ALL OLD *
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 11)
@@ -7377,7 +7377,7 @@ DELETE FROM classes WHERE id = 12 RETURNING *;
 -----------------------------------------------------------------------------
  Delete on public.classes  (cost=100.00..146.86 rows=15 width=4)
    Output: id, name, "isAtDorm", score, courses
-   Remote SQL: DELETE FROM classes WHERE id = ?  RETURNING ALL OLD *
+   Remote SQL: DELETE FROM classes WHERE id = ? RETURNING ALL OLD *
    ->  Foreign Scan on public.classes  (cost=100.00..146.86 rows=15 width=4)
          Output: id
          Remote SQL: SELECT id FROM classes WHERE (id = 12)

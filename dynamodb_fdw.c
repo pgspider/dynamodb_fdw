@@ -118,6 +118,11 @@ extern void dynamodbExplainForeignModify(ModifyTableState *mtstate,
 										List *fdw_private,
 										int subplan_index,
 										ExplainState *es);
+extern void dynamodbBeginForeignInsert(ModifyTableState *mtstate,
+									   ResultRelInfo *resultRelInfo);
+extern void dynamodbEndForeignInsert(EState *estate,
+									 ResultRelInfo *resultRelInfo);
+
 void
 _PG_init(void)
 {
@@ -162,6 +167,8 @@ dynamodb_fdw_handler(PG_FUNCTION_ARGS)
 	routine->ExecForeignUpdate = dynamodbExecForeignUpdate;
 	routine->ExecForeignDelete = dynamodbExecForeignDelete;
 	routine->EndForeignModify = dynamodbEndForeignModify;
+	routine->BeginForeignInsert = dynamodbBeginForeignInsert;
+	routine->EndForeignInsert = dynamodbEndForeignInsert;
 
 	/* Support functions for EXPLAIN */
 	routine->ExplainForeignScan = dynamodbExplainForeignScan;

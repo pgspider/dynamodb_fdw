@@ -1230,6 +1230,7 @@ dynamodb_deparse_returning(StringInfo buf,
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	int			i;
+	bool		have_wholerow;
 
 	*retrieved_attrs = NIL;
 
@@ -1237,6 +1238,10 @@ dynamodb_deparse_returning(StringInfo buf,
 		appendStringInfoString(buf, " RETURNING ALL OLD *");
 	else
 		appendStringInfoString(buf, " RETURNING ALL NEW *");
+
+	/* If there's a whole-row reference, we'll need all the columns. */
+	have_wholerow = bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
+								  attrs_used);
 
 	for (i = 1; i <= tupdesc->natts; i++)
 	{
@@ -1246,9 +1251,14 @@ dynamodb_deparse_returning(StringInfo buf,
 		if (attr->attisdropped)
 			continue;
 
-		if (bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
+		if (have_wholerow ||
+			bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
 						attrs_used))
-			dynamodb_store_attr_info(attr->attname.data, i, retrieved_attrs);
+		{
+			char *colname = dynamodb_get_column_name(rel->rd_id, attr->attnum);
+
+			dynamodb_store_attr_info(colname, i, retrieved_attrs);
+		}
 	}
 }
 
@@ -2255,21 +2265,23 @@ void
 dynamodb_deparse_delete(StringInfo buf, RangeTblEntry *rte,
 				 		Index rtindex, Relation rel,
 				 		List *returningList,
-						List **retrieved_attrs)
+						List **retrieved_attrs, List *attnums)
 {
-	Oid				relid = RelationGetRelid(rel);
-	dynamodb_opt   *opt = dynamodb_get_options(relid);
-	char		   *partition_key= opt->svr_partition_key;
-	char		   *sort_key= opt -> svr_sort_key;
+	int				i = 0;
+	ListCell	   *lc;
 
 	appendStringInfoString(buf, "DELETE FROM ");
 	dynamodb_deparse_relation(buf, rel);
 
-	
-	appendStringInfo(buf, " WHERE %s = ? ", partition_key);
+	foreach(lc, attnums)
+	{
+		int			attnum = lfirst_int(lc);
 
-	if (!IS_KEY_EMPTY(sort_key))
-		appendStringInfo(buf, "AND %s = ? ", sort_key);
+		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
+		dynamodb_deparse_column_ref(buf, rtindex, attnum, rte, retrieved_attrs, false);
+		appendStringInfo(buf, " = ?");
+		i++;
+	}
 	
 	/* which is returned to *retrieved_attrs */
 	dynamodb_deparse_returning_list(buf, rte, rtindex, rel,
@@ -2282,13 +2294,10 @@ dynamodb_deparse_update(StringInfo buf, RangeTblEntry *rte,
 							 Index rtindex, Relation rel,
 							 List *targetAttrs,
 							 List *withCheckOptionList, List *returningList,
-							 List **retrieved_attrs)
+							 List **retrieved_attrs, List *attnums)
 {
 	ListCell	   *lc;
-	Oid				relid = RelationGetRelid(rel);
-	dynamodb_opt   *opt = dynamodb_get_options(relid);
-	char		   *partition_key = opt->svr_partition_key;
-	char		   *sort_key = opt -> svr_sort_key;
+	int				i = 0;
 
 	appendStringInfoString(buf, "UPDATE ");
 	dynamodb_deparse_relation(buf, rel);
@@ -2303,10 +2312,15 @@ dynamodb_deparse_update(StringInfo buf, RangeTblEntry *rte,
 		appendStringInfo(buf, " = ?");
 	}
 
-	appendStringInfo(buf, " WHERE \"%s\" = ? ", partition_key);
+	foreach(lc, attnums)
+	{
+		int			attnum = lfirst_int(lc);
 
-	if (!IS_KEY_EMPTY(sort_key))
-		appendStringInfo(buf, "AND \"%s\" = ?", sort_key);
+		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
+		dynamodb_deparse_column_ref(buf, rtindex, attnum, rte, retrieved_attrs, false);
+		appendStringInfo(buf, " = ?");
+		i++;
+	}
 
 	dynamodb_deparse_returning_list(buf, rte, rtindex, rel,
 									rel->trigdesc && rel->trigdesc->trig_delete_after_row,
@@ -2425,17 +2439,12 @@ dynamodb_tlist_has_json_arrow_op(PlannerInfo *root, RelOptInfo *baserel, List *t
 static void
 dynamodb_store_attr_info(const char *col_name, int varno, List **retrieved_attr)
 {
-	attr_entry *attr = NULL;
-
 	if (col_name == NULL)
 		return;
 
-	/* Store Attributes information in attribute list */
-	attr = (attr_entry *) palloc(sizeof(attr_entry));
-	attr->attrname = col_name;
-	attr->attrno = varno;
-
-	*retrieved_attr = lappend(*retrieved_attr, attr);
+	/* Store Attributes information into list */
+	*retrieved_attr = lappend(*retrieved_attr, makeString((char *) col_name));
+	*retrieved_attr = lappend(*retrieved_attr, makeInteger(varno));
 }
 
 /*

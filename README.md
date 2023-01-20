@@ -76,6 +76,8 @@ For example: `SELECT * FROM WHERE name > '@#!S';` is not pushed down.
 For example: `SELECT name, friends->'class_info'->'name' FROM students;`
 * Does not push down overlap document path. <br>
 For example: `SELECT friends->'class_info', friends->'class_info'->'name' FROM students;`
+* Does not support COPY FROM and foreign partition routing. The following error will be shown.<br>
+    <pre>COPY and foreign partition routing not supported in dynamodb_fdw</pre>
 ## 8. Notes
 * For string set and number set of DynamoDB, the values in the set are sorted from smallest to largest automatically.<br>
 Therefore, if you want to access to the element of array, it will return the different value compared to insert value.<br>
@@ -87,7 +89,47 @@ For example, user input `array[1,2,null,4]`, the values inserted into DynamoDB w
 User input `array['one','two',null,'four']`, the values inserted into DynamoDB will be `['one', 'two', '', 'four']`.
 * If an attribute of Map type does not exist, the condition `xxx IS NULL` will always return false.
 
-## 9. License
+## 9. Supported push down operators
+### Comparison operators
+| No | PostgreSQL | Remark |
+|----|------------|--------|
+| 1 | `=` | Equal to |
+| 2 | `<>` or `!=` | Not Equal to |
+| 3 | `> ` | Greater than |
+| 4 | `< ` | Less than |
+| 5 | `>=` | Greater than or equal to |
+| 6 | `<=` | Less than or equal to |
+
+### Logical operators
+| No | PostgreSQL | Remark |
+|----|------------|--------|
+| 1 | `AND` | `TRUE` if all the conditions separated by `AND` are `TRUE` |
+| 2 | `BETWEEN` | `TRUE` if the operand is within the range of comparisons |
+| 3 | `IN` | Only support `IN` with a list of value. Return `TRUE` if the operand is equal to one of a list of expressions. |
+| 4 | `IS` | Only support `IS NULL`. Return `TRUE` if the operand is NULL. |
+| 5 | `NOT` | Reverses the value of a given Boolean expression |
+| 6 | `OR` | `TRUE` if any of the conditions separated by `OR` are `TRUE` |
+
+### Dereference operators
+| No | PostgreSQL | Remark |
+|----|------------|--------|
+| 1 | `->` | Extracts JSON object field with the given key. This mapping will be used when right operand is an attribute name (which is represented as a text constant). |
+| 2 | `->>` | Extracts JSON object field with the given key, as text. |
+| 3 | `->` | Extract nested element of List type. This mapping will be used when right operand is a number. |
+
+## 10. Data type mapping between PostgreSQL and DynamoDB
+
+| No | PostgreSQL | DynamoDB | Remark |
+|----|------------|----------|--------|
+| 1 | boolean | Boolean | N/A | 
+| 2 | bytea | Binary | PartiQL of DynamoDB does not have any way to represent binary data. Therefore, DynamoDB FDW only supports selecting Binary column. DynamoDB FDW does not support Binary column in WHERE clause. |
+| 3 | JSON/JSONB | Map | N/A |
+| 4 | NULL | Null | N/A |
+| 5 | smallint, integer, bigint, numeric, real, double precision | Number | N/A |
+| 6 | smallint\[\], integer\[\], bigint\[\], numeric\[\], real\[\], double precision\[\] | Number Set | N/A |
+| 7 | text character varying(n)\[\], varchar(n)\[\], character(n)\[\], char(n) \[\], text\[\] | String Set | N/A |
+| 8 | text character varying(n), varchar(n), character(n), char(n), text | String | N/A |
+## 11. License
 Copyright and license information can be found in the file [`LICENSE`][1].
 
 [1]: LICENSE

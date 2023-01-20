@@ -1,0 +1,1163 @@
+\set ECHO none
+--Testcase 1:
+CREATE EXTENSION IF NOT EXISTS dynamodb_fdw;
+--Testcase 2:
+CREATE SERVER dynamodb_server FOREIGN DATA WRAPPER dynamodb_fdw
+  OPTIONS (endpoint :DYNAMODB_ENDPOINT);
+--Testcase 3:
+CREATE USER MAPPING FOR public SERVER dynamodb_server 
+  OPTIONS (user :DYNAMODB_USER, password :DYNAMODB_PASSWORD);
+--Testcase 4:
+CREATE FOREIGN TABLE onek (
+  unique1   int4,
+  unique2   int4,
+  two       int4,
+  four      int4,
+  ten       int4,
+  twenty    int4,
+  hundred   int4,
+  thousand  int4,
+  twothousand int4,
+  fivethous int4,
+  tenthous  int4,
+  odd       int4,
+  even      int4,
+  stringu1  name,
+  stringu2  name,
+  string4   name
+) SERVER dynamodb_server OPTIONS (table_name 'onek', partition_key 'unique1');
+--Testcase 5:
+CREATE FOREIGN TABLE onek2 (
+  unique1   int4,
+  unique2   int4,
+  two       int4,
+  four      int4,
+  ten       int4,
+  twenty    int4,
+  hundred   int4,
+  thousand  int4,
+  twothousand int4,
+  fivethous int4,
+  tenthous  int4,
+  odd       int4,
+  even      int4,
+  stringu1  name,
+  stringu2  name,
+  string4   name
+) SERVER dynamodb_server OPTIONS (table_name 'onek', partition_key 'unique1');
+-- btree index
+-- awk '{if($1<10){print;}else{next;}}' onek.data | sort +0n -1
+--
+--Testcase 6:
+EXPLAIN VERBOSE
+SELECT * FROM onek
+   WHERE onek.unique1 < 10
+   ORDER BY onek.unique1;
+                                                                                           QUERY PLAN                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=119.26..119.51 rows=102 width=244)
+   Output: unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4
+   Sort Key: onek.unique1
+   ->  Foreign Scan on public.onek  (cost=100.00..115.85 rows=102 width=244)
+         Output: unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4
+         Remote SQL: SELECT unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4 FROM onek WHERE (unique1 < 10)
+(6 rows)
+
+--Testcase 7:
+SELECT * FROM onek
+   WHERE onek.unique1 < 10
+   ORDER BY onek.unique1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       9 |      49 |   1 |    1 |   9 |      9 |       9 |        9 |           9 |         9 |        9 |  18 |   19 | JAAAAA   | XBAAAA   | HHHHxx
+(1 row)
+
+--
+-- awk '{if($1<20){print $1,$14;}else{next;}}' onek.data | sort +0nr -1
+--
+--Testcase 8:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.stringu1 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using >;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, stringu1
+   Sort Key: onek.unique1 DESC
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, stringu1
+         Remote SQL: SELECT unique1, stringu1 FROM onek WHERE (unique1 < 20)
+(6 rows)
+
+--Testcase 9:
+SELECT onek.unique1, onek.stringu1 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using >;  
+ unique1 | stringu1 
+---------+----------
+       9 | JAAAAA
+(1 row)
+
+--
+-- awk '{if($1>980){print $1,$14;}else{next;}}' onek.data | sort +1d -2
+--
+--Testcase 10:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.stringu1 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY stringu1 using <;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, stringu1
+   Sort Key: onek.stringu1
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, stringu1
+         Remote SQL: SELECT unique1, stringu1 FROM onek WHERE (unique1 > 980)
+(6 rows)
+
+--Testcase 11:
+SELECT onek.unique1, onek.stringu1 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY stringu1 using <;
+ unique1 | stringu1 
+---------+----------
+     997 | JMAAAA
+(1 row)
+
+  
+--
+-- awk '{if($1>980){print $1,$16;}else{next;}}' onek.data |
+-- sort +1d -2 +0nr -1
+--
+--Testcase 12:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY string4 using <, unique1 using >;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, string4
+   Sort Key: onek.string4, onek.unique1 DESC
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, string4
+         Remote SQL: SELECT unique1, string4 FROM onek WHERE (unique1 > 980)
+(6 rows)
+
+--Testcase 13:
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY string4 using <, unique1 using >;
+ unique1 | string4 
+---------+---------
+     997 | HHHHxx
+(1 row)
+
+--
+-- awk '{if($1>980){print $1,$16;}else{next;}}' onek.data |
+-- sort +1dr -2 +0n -1
+--
+--Testcase 14:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY string4 using >, unique1 using <;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, string4
+   Sort Key: onek.string4 DESC, onek.unique1
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, string4
+         Remote SQL: SELECT unique1, string4 FROM onek WHERE (unique1 > 980)
+(6 rows)
+
+--Testcase 15:
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 > 980
+   ORDER BY string4 using >, unique1 using <;
+ unique1 | string4 
+---------+---------
+     997 | HHHHxx
+(1 row)
+
+--
+-- awk '{if($1<20){print $1,$16;}else{next;}}' onek.data |
+-- sort +0nr -1 +1d -2
+--
+--Testcase 16:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using >, string4 using <;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, string4
+   Sort Key: onek.unique1 DESC, onek.string4
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, string4
+         Remote SQL: SELECT unique1, string4 FROM onek WHERE (unique1 < 20)
+(6 rows)
+
+--Testcase 17:
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using >, string4 using <;
+ unique1 | string4 
+---------+---------
+       9 | HHHHxx
+(1 row)
+
+--
+-- awk '{if($1<20){print $1,$16;}else{next;}}' onek.data |
+-- sort +0n -1 +1dr -2
+--
+--Testcase 18:
+EXPLAIN VERBOSE
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using <, string4 using >;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Sort  (cost=139.26..140.01 rows=297 width=68)
+   Output: unique1, string4
+   Sort Key: onek.unique1, onek.string4 DESC
+   ->  Foreign Scan on public.onek  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, string4
+         Remote SQL: SELECT unique1, string4 FROM onek WHERE (unique1 < 20)
+(6 rows)
+
+--Testcase 19:
+SELECT onek.unique1, onek.string4 FROM onek
+   WHERE onek.unique1 < 20
+   ORDER BY unique1 using <, string4 using >;
+ unique1 | string4 
+---------+---------
+       9 | HHHHxx
+(1 row)
+
+--
+-- test partial btree indexes
+--
+-- As of 7.2, planner probably won't pick an indexscan without stats,
+-- so ANALYZE first.  Also, we want to prevent it from picking a bitmapscan
+-- followed by sort, because that could hide index ordering problems.
+--
+-- ANALYZE onek2;
+SET enable_seqscan TO off;
+SET enable_bitmapscan TO off;
+SET enable_sort TO off;
+--
+-- awk '{if($1<10){print $0;}else{next;}}' onek.data | sort +0n -1
+--
+--Testcase 20:
+EXPLAIN VERBOSE
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.onek2  (cost=100.00..115.85 rows=102 width=244)
+   Output: unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4
+   Remote SQL: SELECT unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4 FROM onek WHERE (unique1 < 10)
+(3 rows)
+
+--Testcase 21:
+SELECT onek2.* FROM onek2 WHERE onek2.unique1 < 10;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       9 |      49 |   1 |    1 |   9 |      9 |       9 |        9 |           9 |         9 |        9 |  18 |   19 | JAAAAA   | XBAAAA   | HHHHxx
+(1 row)
+
+--
+-- awk '{if($1<20){print $1,$14;}else{next;}}' onek.data | sort +0nr -1
+--
+--Testcase 22:
+EXPLAIN VERBOSE
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+    WHERE onek2.unique1 < 20
+    ORDER BY unique1 using >;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort  (cost=10000000139.26..10000000140.01 rows=297 width=68)
+   Output: unique1, stringu1
+   Sort Key: onek2.unique1 DESC
+   ->  Foreign Scan on public.onek2  (cost=100.00..127.06 rows=297 width=68)
+         Output: unique1, stringu1
+         Remote SQL: SELECT unique1, stringu1 FROM onek WHERE (unique1 < 20)
+(6 rows)
+
+--Testcase 23:
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+    WHERE onek2.unique1 < 20
+    ORDER BY unique1 using >;
+ unique1 | stringu1 
+---------+----------
+       9 | JAAAAA
+(1 row)
+
+--
+-- awk '{if($1>980){print $1,$14;}else{next;}}' onek.data | sort +1d -2
+--
+--Testcase 24:
+EXPLAIN VERBOSE
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+   WHERE onek2.unique1 > 980;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Foreign Scan on public.onek2  (cost=100.00..127.06 rows=297 width=68)
+   Output: unique1, stringu1
+   Remote SQL: SELECT unique1, stringu1 FROM onek WHERE (unique1 > 980)
+(3 rows)
+
+--Testcase 25:
+SELECT onek2.unique1, onek2.stringu1 FROM onek2
+   WHERE onek2.unique1 > 980;
+ unique1 | stringu1 
+---------+----------
+     997 | JMAAAA
+(1 row)
+
+RESET enable_seqscan;
+RESET enable_bitmapscan;
+RESET enable_sort;
+--
+-- Test some cases involving whole-row Var referencing a subquery
+--
+--Testcase 28:
+EXPLAIN VERBOSE
+select foo from (select 1 offset 0) as foo;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Subquery Scan on foo  (cost=0.00..0.02 rows=1 width=24)
+   Output: foo.*
+   ->  Result  (cost=0.00..0.01 rows=1 width=4)
+         Output: 1
+(4 rows)
+
+--Testcase 29:
+select foo from (select 1 offset 0) as foo;
+ foo 
+-----
+ (1)
+(1 row)
+
+--Testcase 30:
+EXPLAIN VERBOSE
+select foo from (select null offset 0) as foo;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Subquery Scan on foo  (cost=0.00..0.02 rows=1 width=24)
+   Output: foo.*
+   ->  Result  (cost=0.00..0.01 rows=1 width=32)
+         Output: NULL::text
+(4 rows)
+
+--Testcase 31:
+select foo from (select null offset 0) as foo;
+ foo 
+-----
+ ()
+(1 row)
+
+--Testcase 32:
+EXPLAIN VERBOSE
+select foo from (select 'xyzzy',1,null offset 0) as foo;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Subquery Scan on foo  (cost=0.00..0.02 rows=1 width=24)
+   Output: foo.*
+   ->  Result  (cost=0.00..0.01 rows=1 width=68)
+         Output: 'xyzzy'::text, 1, NULL::text
+(4 rows)
+
+--Testcase 33:
+select foo from (select 'xyzzy',1,null offset 0) as foo;
+    foo     
+------------
+ (xyzzy,1,)
+(1 row)
+
+--
+-- Test VALUES lists
+--
+--Testcase 34:
+EXPLAIN VERBOSE
+select * from onek, (values(147, 'RFAAAA'), (931, 'VJAAAA')) as v (i, j)
+    WHERE onek.unique1 = v.i and onek.stringu1 = v.j;
+                                                                                                                               QUERY PLAN                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=100.06..121.50 rows=1 width=280)
+   Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4, "*VALUES*".column1, "*VALUES*".column2
+   Hash Cond: ((onek.unique1 = "*VALUES*".column1) AND (onek.stringu1 = ("*VALUES*".column2)::text))
+   ->  Foreign Scan on public.onek  (cost=100.00..119.15 rows=305 width=244)
+         Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4
+         Remote SQL: SELECT unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4 FROM onek
+   ->  Hash  (cost=0.03..0.03 rows=2 width=36)
+         Output: "*VALUES*".column1, "*VALUES*".column2
+         ->  Values Scan on "*VALUES*"  (cost=0.00..0.03 rows=2 width=36)
+               Output: "*VALUES*".column1, "*VALUES*".column2
+(10 rows)
+
+--Testcase 35:
+select * from onek, (values(147, 'RFAAAA'), (931, 'VJAAAA')) as v (i, j)
+    WHERE onek.unique1 = v.i and onek.stringu1 = v.j;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 |  i  |   j    
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------+-----+--------
+     931 |       1 |   1 |    3 |   1 |     11 |       1 |       31 |         131 |       431 |      931 |   2 |    3 | VJAAAA   | BAAAAA   | HHHHxx  | 931 | VJAAAA
+     147 |       0 |   1 |    3 |   7 |      7 |       7 |       47 |         147 |       147 |      147 |  14 |   15 | RFAAAA   | AAAAAA   | AAAAxx  | 147 | RFAAAA
+(2 rows)
+
+-- a more complex case
+-- looks like we're coding lisp :-)
+--Testcase 36:
+EXPLAIN VERBOSE
+select * from onek,
+  (values ((select i from
+    (values(10000), (2), (389), (1000), (2000), ((select 10029))) as foo(i)
+    order by i asc limit 1))) bar (i)
+  where onek.unique1 = bar.i;
+                                                                                                             QUERY PLAN                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.onek  (cost=100.23..120.15 rows=2 width=248)
+   Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4, $1
+   Filter: (onek.unique1 = $3)
+   Remote SQL: SELECT unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4 FROM onek
+   InitPlan 2 (returns $1)
+     ->  Limit  (cost=0.12..0.12 rows=1 width=4)
+           Output: "*VALUES*".column1
+           InitPlan 1 (returns $0)
+             ->  Result  (cost=0.00..0.01 rows=1 width=4)
+                   Output: 10029
+           ->  Sort  (cost=0.11..0.12 rows=6 width=4)
+                 Output: "*VALUES*".column1
+                 Sort Key: "*VALUES*".column1
+                 ->  Values Scan on "*VALUES*"  (cost=0.00..0.08 rows=6 width=4)
+                       Output: "*VALUES*".column1
+   InitPlan 4 (returns $3)
+     ->  Limit  (cost=0.12..0.12 rows=1 width=4)
+           Output: "*VALUES*_1".column1
+           InitPlan 3 (returns $2)
+             ->  Result  (cost=0.00..0.01 rows=1 width=4)
+                   Output: 10029
+           ->  Sort  (cost=0.11..0.12 rows=6 width=4)
+                 Output: "*VALUES*_1".column1
+                 Sort Key: "*VALUES*_1".column1
+                 ->  Values Scan on "*VALUES*_1"  (cost=0.00..0.08 rows=6 width=4)
+                       Output: "*VALUES*_1".column1
+(26 rows)
+
+--Testcase 37:
+select * from onek,
+  (values ((select i from
+    (values(10000), (2), (389), (1000), (2000), ((select 10029))) as foo(i)
+    order by i asc limit 1))) bar (i)
+  where onek.unique1 = bar.i;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 | i 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------+---
+(0 rows)
+
+-- try VALUES in a subquery
+--Testcase 38:
+EXPLAIN VERBOSE
+select * from onek
+    where (unique1,ten) in (values (1,1), (20,0), (99,9), (17,99))
+    order by unique1;
+                                                                                                                 QUERY PLAN                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=120.87..120.88 rows=1 width=244)
+   Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4
+   Sort Key: onek.unique1
+   ->  Hash Semi Join  (cost=100.11..120.86 rows=1 width=244)
+         Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4
+         Hash Cond: ((onek.unique1 = "*VALUES*".column1) AND (onek.ten = "*VALUES*".column2))
+         ->  Foreign Scan on public.onek  (cost=100.00..119.15 rows=305 width=244)
+               Output: onek.unique1, onek.unique2, onek.two, onek.four, onek.ten, onek.twenty, onek.hundred, onek.thousand, onek.twothousand, onek.fivethous, onek.tenthous, onek.odd, onek.even, onek.stringu1, onek.stringu2, onek.string4
+               Remote SQL: SELECT unique1, unique2, two, four, ten, twenty, hundred, thousand, twothousand, fivethous, tenthous, odd, even, stringu1, stringu2, string4 FROM onek
+         ->  Hash  (cost=0.05..0.05 rows=4 width=8)
+               Output: "*VALUES*".column1, "*VALUES*".column2
+               ->  Values Scan on "*VALUES*"  (cost=0.00..0.05 rows=4 width=8)
+                     Output: "*VALUES*".column1, "*VALUES*".column2
+(13 rows)
+
+--Testcase 39:
+select * from onek
+    where (unique1,ten) in (values (1,1), (20,0), (99,9), (17,99))
+    order by unique1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+(0 rows)
+
+-- DynamoDB does not allow to create table with no columns
+-- corner case: VALUES with no columns
+-- CREATE TEMP TABLE nocols();
+-- INSERT INTO nocols DEFAULT VALUES;
+-- SELECT * FROM nocols n, LATERAL (VALUES(n.*)) v;
+--
+-- Test ORDER BY options
+--
+--Testcase 40:
+CREATE FOREIGN TABLE foo (key_dy int, f1 int) SERVER dynamodb_server OPTIONS (table_name 'foo_select',  partition_key 'key_dy');
+--INSERT INTO foo VALUES (42),(3),(10),(7),(null),(null),(1);
+--Testcase 41:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=331.72..338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 42:
+SELECT * FROM foo ORDER BY f1;
+ key_dy | f1 
+--------+----
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 43:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 ASC;	-- same thing
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=331.72..338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 44:
+SELECT * FROM foo ORDER BY f1 ASC;	-- same thing
+ key_dy | f1 
+--------+----
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 45:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=331.72..338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 NULLS FIRST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 46:
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+(7 rows)
+
+--Testcase 47:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=331.72..338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 48:
+SELECT * FROM foo ORDER BY f1 DESC;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+(7 rows)
+
+--Testcase 49:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=331.72..338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC NULLS LAST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 50:
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+ key_dy | f1 
+--------+----
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+      5 |   
+      6 |   
+(7 rows)
+
+-- check if indexscans do the right things
+--Testcase 51:
+CREATE INDEX fooi ON foo (f1);
+ERROR:  cannot create index on relation "foo"
+DETAIL:  This operation is not supported for foreign tables.
+SET enable_sort = false;
+--Testcase 52:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 53:
+SELECT * FROM foo ORDER BY f1;
+ key_dy | f1 
+--------+----
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 54:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 NULLS FIRST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 55:
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+(7 rows)
+
+--Testcase 56:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 57:
+SELECT * FROM foo ORDER BY f1 DESC;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+(7 rows)
+
+--Testcase 58:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC NULLS LAST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 59:
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+ key_dy | f1 
+--------+----
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 60:
+DROP INDEX fooi;
+ERROR:  index "fooi" does not exist
+--Testcase 61:
+CREATE INDEX fooi ON foo (f1 DESC);
+ERROR:  cannot create index on relation "foo"
+DETAIL:  This operation is not supported for foreign tables.
+--Testcase 62:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 63:
+SELECT * FROM foo ORDER BY f1;
+ key_dy | f1 
+--------+----
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 64:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 NULLS FIRST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 65:
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+(7 rows)
+
+--Testcase 66:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 67:
+SELECT * FROM foo ORDER BY f1 DESC;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+(7 rows)
+
+--Testcase 68:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC NULLS LAST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 69:
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+ key_dy | f1 
+--------+----
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 70:
+DROP INDEX fooi;
+ERROR:  index "fooi" does not exist
+--Testcase 71:
+CREATE INDEX fooi ON foo (f1 DESC NULLS LAST);
+ERROR:  cannot create index on relation "foo"
+DETAIL:  This operation is not supported for foreign tables.
+--Testcase 72:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 73:
+SELECT * FROM foo ORDER BY f1;
+ key_dy | f1 
+--------+----
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+      5 |   
+      6 |   
+(7 rows)
+
+--Testcase 74:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 NULLS FIRST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 75:
+SELECT * FROM foo ORDER BY f1 NULLS FIRST;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      7 |  1
+      2 |  3
+      4 |  7
+      3 | 10
+      1 | 42
+(7 rows)
+
+--Testcase 76:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 77:
+SELECT * FROM foo ORDER BY f1 DESC;
+ key_dy | f1 
+--------+----
+      5 |   
+      6 |   
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+(7 rows)
+
+--Testcase 78:
+EXPLAIN VERBOSE
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort  (cost=10000000331.72..10000000338.12 rows=2560 width=8)
+   Output: key_dy, f1
+   Sort Key: foo.f1 DESC NULLS LAST
+   ->  Foreign Scan on public.foo  (cost=100.00..186.80 rows=2560 width=8)
+         Output: key_dy, f1
+         Remote SQL: SELECT key_dy, f1 FROM foo_select
+(6 rows)
+
+--Testcase 79:
+SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+ key_dy | f1 
+--------+----
+      1 | 42
+      3 | 10
+      4 |  7
+      2 |  3
+      7 |  1
+      5 |   
+      6 |   
+(7 rows)
+
+--
+-- Test planning of some cases with partial indexes
+--
+-- partial index is usable
+--Testcase 80:
+explain (costs off)
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+              QUERY PLAN               
+---------------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 = 'ATAAAA'::name)
+(2 rows)
+
+--Testcase 81:
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+     494 |      11 |   0 |    2 |   4 |     14 |       4 |       94 |          94 |       494 |      494 |   8 |    9 | ATAAAA   | LAAAAA   | VVVVxx
+(1 row)
+
+-- actually run the query with an analyze to use the partial index
+--Testcase 82:
+explain (costs off, analyze on, timing off, summary off)
+select * from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Foreign Scan on onek2 (actual rows=1 loops=1)
+   Filter: (stringu1 = 'ATAAAA'::name)
+(2 rows)
+
+--Testcase 83:
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+              QUERY PLAN               
+---------------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 = 'ATAAAA'::name)
+(2 rows)
+
+--Testcase 84:
+select unique2 from onek2 where unique2 = 11 and stringu1 = 'ATAAAA';
+ unique2 
+---------
+      11
+(1 row)
+
+-- partial index predicate implies clause, so no need for retest
+--Testcase 85:
+explain (costs off)
+select * from onek2 where unique2 = 11 and stringu1 < 'B';
+            QUERY PLAN            
+----------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 < 'B'::name)
+(2 rows)
+
+--Testcase 86:
+select * from onek2 where unique2 = 11 and stringu1 < 'B';
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+     494 |      11 |   0 |    2 |   4 |     14 |       4 |       94 |          94 |       494 |      494 |   8 |    9 | ATAAAA   | LAAAAA   | VVVVxx
+(1 row)
+
+--Testcase 87:
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+            QUERY PLAN            
+----------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 < 'B'::name)
+(2 rows)
+
+--Testcase 88:
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+ unique2 
+---------
+      11
+(1 row)
+
+-- but if it's an update target, must retest anyway
+--Testcase 89:
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
+               QUERY PLAN               
+----------------------------------------
+ LockRows
+   ->  Foreign Scan on onek2
+         Filter: (stringu1 < 'B'::name)
+(3 rows)
+
+--Testcase 90:
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B' for update;
+ unique2 
+---------
+      11
+(1 row)
+
+-- partial index is not applicable
+--Testcase 91:
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
+            QUERY PLAN            
+----------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 < 'C'::name)
+(2 rows)
+
+--Testcase 92:
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'C';
+ unique2 
+---------
+      11
+(1 row)
+
+-- partial index implies clause, but bitmap scan must recheck predicate anyway
+SET enable_indexscan TO off;
+--Testcase 93:
+explain (costs off)
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+            QUERY PLAN            
+----------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 < 'B'::name)
+(2 rows)
+
+--Testcase 94:
+select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
+ unique2 
+---------
+      11
+(1 row)
+
+RESET enable_indexscan;
+-- check multi-index cases too
+--Testcase 95:
+explain (costs off)
+select unique1, unique2 from onek2
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B';
+            QUERY PLAN            
+----------------------------------
+ Foreign Scan on onek2
+   Filter: (stringu1 < 'B'::name)
+(2 rows)
+
+--Testcase 96:
+select unique1, unique2 from onek2
+  where (unique2 = 11 or unique1 = 0) and stringu1 < 'B';
+ unique1 | unique2 
+---------+---------
+     494 |      11
+(1 row)
+
+--Testcase 97:
+explain (costs off)
+select unique1, unique2 from onek2
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Foreign Scan on onek2
+   Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
+(2 rows)
+
+--Testcase 98:
+select unique1, unique2 from onek2
+  where (unique2 = 11 and stringu1 < 'B') or unique1 = 0;
+ unique1 | unique2 
+---------+---------
+     494 |      11
+(1 row)
+
+--
+-- Test some corner cases that have been known to confuse the planner
+--
+-- ORDER BY on a constant doesn't really need any sorting
+--Testcase 99:
+EXPLAIN VERBOSE
+SELECT 1 AS x ORDER BY x;
+                QUERY PLAN                
+------------------------------------------
+ Result  (cost=0.00..0.01 rows=1 width=4)
+   Output: 1
+(2 rows)
+
+--Testcase 100:
+SELECT 1 AS x ORDER BY x;
+ x 
+---
+ 1
+(1 row)
+
+--Testcase 101:
+DROP USER MAPPING FOR public SERVER dynamodb_server;
+--Testcase 102:
+DROP EXTENSION dynamodb_fdw CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to server dynamodb_server
+drop cascades to foreign table onek
+drop cascades to foreign table onek2
+drop cascades to foreign table foo
