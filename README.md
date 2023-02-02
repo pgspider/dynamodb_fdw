@@ -326,4 +326,4 @@ License
 -------
 Copyright and license information can be found in the file [`LICENSE`][1].
 
-[1]: LICENSE.md
+[1]: LICENSE
