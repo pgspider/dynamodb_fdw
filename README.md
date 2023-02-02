@@ -24,7 +24,7 @@ Contents
 
 Features
 --------
-## Common features
+### Common features
 
 * Support `SELECT` feature to get data from DynamoDB.
 * DynamoDB FDW supports selecting columns or nested attribute object (using `->` or `->>` operator)
@@ -32,7 +32,9 @@ Features
 * Support `UPDATE` feature using foreign modify.
 * Support `DELETE` feature using foreign modify.
 
-## Pushdowning
+### Pushdowning
+
+#### Common pushdowning
 * Support push down `WHERE` clause (including nested attribute object).
 * Support push down function `SIZE` of DynamoDB.
 * Does not push down `WHERE` condition when it compares array constant.
@@ -44,7 +46,7 @@ For example: `SELECT name, friends->'class_info'->'name' FROM students;`
 * Does not push down overlap document path. 
 For example: `SELECT friends->'class_info', friends->'class_info'->'name' FROM students;`
 
-### Comparison operators
+#### Comparison operators
 | No | PostgreSQL | Remark |
 |----|------------|--------|
 | 1 | `=` | Equal to |
@@ -54,7 +56,7 @@ For example: `SELECT friends->'class_info', friends->'class_info'->'name' FROM s
 | 5 | `>=` | Greater than or equal to |
 | 6 | `<=` | Less than or equal to |
 
-### Logical operators
+#### Logical operators
 | No | PostgreSQL | Remark |
 |----|------------|--------|
 | 1 | `AND` | `TRUE` if all the conditions separated by `AND` are `TRUE` |
@@ -64,14 +66,14 @@ For example: `SELECT friends->'class_info', friends->'class_info'->'name' FROM s
 | 5 | `NOT` | Reverses the value of a given Boolean expression |
 | 6 | `OR` | `TRUE` if any of the conditions separated by `OR` are `TRUE` |
 
-### Dereference operators
+#### Dereference operators
 | No | PostgreSQL | Remark |
 |----|------------|--------|
 | 1 | `->` | Extracts JSON object field with the given key. This mapping will be used when right operand is an attribute name (which is represented as a text constant). |
 | 2 | `->>` | Extracts JSON object field with the given key, as text. |
 | 3 | `->` | Extract nested element of List type. This mapping will be used when right operand is a number. |
 
-## Notes about features
+### Notes about features
 
 * For string set and number set of DynamoDB, the values in the set are sorted from smallest to largest automatically.
 Therefore, if you want to access to the element of array, it will return the different value compared to insert value.
@@ -82,6 +84,8 @@ Therefore, when user input NULL as element of array, the default value (0 for nu
 For example, user input `array[1,2,null,4]`, the values inserted into DynamoDB will be `[1, 2, 0, 4]`.
 User input `array['one','two',null,'four']`, the values inserted into DynamoDB will be `['one', 'two', '', 'four']`.
 * If an attribute of Map type does not exist, the condition `xxx IS NULL` will always return false.
+
+Also see [Limitations](#limitations)
 
 Supported platforms
 -------------------
@@ -140,11 +144,11 @@ Usage
 `dynamodb_fdw` accepts the following options via the `CREATE USER MAPPING`
 command:
 
-- **user**
+- **user** as *string*, optional
 
   The user credential to connect to DynamoDB. It is required for AWS DynamoDB and optional for DynamoDB local.
 
-- **password**
+- **password** as *string*, optional
 
   The password credential to connect to DynamoDB. It is required for AWS DynamoDB and optional for DynamoDB local.
 
@@ -184,7 +188,8 @@ from PostgreSQL 14.
 
 Functions
 ---------
-
+As well as the standard `dynamodb_fdw_handler()` and `dynamodb_fdw_validator()`
+functions, `dynamodb_fdw` provides the following user-callable utility functions:
 Functions from this FDW in PostgreSQL catalog are **yet not described**.
 
 Data type mapping
@@ -226,29 +231,66 @@ Character set handling
 Examples
 --------
 
-Install the extension:
+### Install the extension:
 
-    CREATE EXTENSION dynamodb_fdw;
+Once for a database you need, as PostgreSQL superuser.
 
-Create a foreign server with appropriate configuration:
+```sql
+	CREATE EXTENSION dynamodb_fdw;
+```
+### Create a foreign server with appropriate configuration:
 
-	CREATE SERVER dynamodb_svr FOREIGN DATA WRAPPER dynamodb_fdw
-		OPTIONS (
-			endpoint 'http://localhost:8000'
-			);
+Once for a foreign datasource you need, as PostgreSQL superuser.
 
-Create an appropriate user mapping:
+```sql
+	CREATE SERVER dynamodb_svr
+	FOREIGN DATA WRAPPER dynamodb_fdw
+	OPTIONS (
+	  endpoint 'http://localhost:8000'
+	);
+```
 
-    CREATE USER MAPPING FOR CURRENT_USER SERVER dynamodb_svr 
-    	OPTIONS(username 'username', password 'password');
+### Grant usage on foreign server to non-superuser in PostgreSQL:
 
-Create a foreign table referencing the dynamodb table:
+Once for a non-superuser in PostgreSQL, as PostgreSQL superuser. It is a good idea to use a superuser only where really necessary, so let's allow a normal user to use the foreign server (this is not required for the example to work, but it's secirity recomedation).
 
-	CREATE FOREIGN TABLE frtbl (c1 int, c2 text, c3 jsonb) SERVER dynamodb_svr OPTIONS (table_name 'table1');
+```sql
+	GRANT USAGE ON FOREIGN SERVER dynamodb_svr TO pguser;
+```
+Where `pgser` is a sample user for works with foreign server (and foreign tables).
 
-Query the foreign table.
+### Create an appropriate user mapping:
 
-	SELECT * FROM frtbl;
+```sql
+	CREATE USER MAPPING
+	FOR pgser
+	SERVER dynamodb_svr 
+    	OPTIONS(
+	  username 'username',
+	  password 'password'
+	);
+```
+Where `pgser` is a sample user for works with foreign server (and foreign tables).
+
+### Create a foreign table referencing the dynamodb table:
+```sql
+	CREATE FOREIGN TABLE frtbl (
+	  c1 int,
+	  c2 text,
+	  c3 jsonb
+	)
+	SERVER dynamodb_svr
+	OPTIONS (
+	  table_name 'table1'
+	);
+```
+
+### Query the foreign table.
+
+```sql
+	SELECT *
+	FROM frtbl;
+```	
 
 Limitations
 -----------
