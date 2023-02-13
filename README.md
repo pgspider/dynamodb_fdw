@@ -2,7 +2,9 @@ DynamoDB Foreign Data Wrapper for PostgreSQL
 ============================================
 
 This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgresql.org/)
-to [dynamodb](https://aws.amazon.com/dynamodb/).
+to [DynamoDB](https://aws.amazon.com/dynamodb/).
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	**DynamoDB**
 
 Contents
 --------
