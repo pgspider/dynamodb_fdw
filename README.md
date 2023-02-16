@@ -137,20 +137,20 @@ Usage
 
 `dynamodb_fdw` accepts the following options via the `CREATE SERVER` command:
 
-- **endpoint** as *string*, optional
+- **endpoint** as *string*, optional, default `http://localhost:8000`
 
-  The URL of the entry point for an AWS web service. If user does not specify this option, the endpoint is set to `http://localhost:8000` by default. It is required for AWS DynamoDB and optional for DynamoDB local.
+  The URL of the entry point for an AWS web service. It is required for AWS DynamoDB and optional for DynamoDB local.
 
 ## CREATE USER MAPPING options
 
 `dynamodb_fdw` accepts the following options via the `CREATE USER MAPPING`
 command:
 
-- **user** as *string*, optional
+- **user** as *string*, optional, no default
 
   The user credential to connect to DynamoDB. It is required for AWS DynamoDB and optional for DynamoDB local.
 
-- **password** as *string*, optional
+- **password** as *string*, optional, no default
 
   The password credential to connect to DynamoDB. It is required for AWS DynamoDB and optional for DynamoDB local.
 
@@ -160,21 +160,21 @@ command:
 `dynamodb_fdw` accepts the following table-level options via the
 `CREATE FOREIGN TABLE` command.
 
-- **partition_key** as *string*, optional
+- **partition_key** as *string*, optional, no default
 
   The column name of the partition key of DynamoDB table.
   
-- **sort_key** as *string*, optional
+- **sort_key** as *string*, optional, no default
   
   The column name of the sort key of DynamoDB table.
 
-- **table_name** as *string*, optional
+- **table_name** as *string*, optional, default table name of foreign table
 
   The corresponding table name in DynamoDB.
 
 The following column-level options are available:
 
-- **column_name** as *string*, optional
+- **column_name** as *string*, optional, default column name of foreign table
 
   The corresponding column name in DynamoDB.
 
