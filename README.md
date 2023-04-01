@@ -87,7 +87,7 @@ For example, user input `array[1,2,null,4]`, the values inserted into DynamoDB w
 User input `array['one','two',null,'four']`, the values inserted into DynamoDB will be `['one', 'two', '', 'four']`.
 * If an attribute of Map type does not exist, the condition `xxx IS NULL` will always return false.
 
-Also see [Limitations](#limitations)
+Also see [Limitations](#limitations).
 
 Supported platforms
 -------------------
