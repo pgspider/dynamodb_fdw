@@ -40,9 +40,14 @@ extern "C"
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/pg_aggregate.h"
+#if PG_VERSION_NUM >= 160000
+#include "catalog/pg_authid.h"
+#endif
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_ts_config.h"
+#include "catalog/pg_ts_dict.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "common/keywords.h"
@@ -173,7 +178,7 @@ static void dynamodb_deparse_column_ref(StringInfo buf, int varno,
 										List **retrieved_attrs,
 										bool need_store_attr);
 static void dynamodb_deparse_relation(StringInfo buf, Relation rel);
-static void dynamodb_deparse_expr(Expr *expr, deparse_expr_cxt *context);
+static void dynamodb_deparse_expr(Expr *node, deparse_expr_cxt *context);
 static void dynamodb_deparse_var(Var *node, deparse_expr_cxt *context);
 static void dynamodb_deparse_const(Const *node, deparse_expr_cxt *context);
 static void dynamodb_deparse_func_expr(FuncExpr *node, deparse_expr_cxt *context);
@@ -442,7 +447,76 @@ dynamodb_foreign_expr_walker(Node *node,
 		case T_Const:
 			{
 				Const	   *c = (Const *) node;
+#if (PG_VERSION_NUM >= 160000)
+				/*
+				 * Constants of regproc and related types can't be shipped
+				 * unless the referenced object is shippable.  But NULL's ok.
+				 * (See also the related code in dependency.c.)
+				 */
+				if (!c->constisnull)
+				{
+					switch (c->consttype)
+					{
+						case REGPROCOID:
+						case REGPROCEDUREOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  ProcedureRelationId, fpinfo))
+								return false;
+							break;
+						case REGOPEROID:
+						case REGOPERATOROID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  OperatorRelationId, fpinfo))
+								return false;
+							break;
+						case REGCLASSOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  RelationRelationId, fpinfo))
+								return false;
+							break;
+						case REGTYPEOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  TypeRelationId, fpinfo))
+								return false;
+							break;
+						case REGCOLLATIONOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  CollationRelationId, fpinfo))
+								return false;
+							break;
+						case REGCONFIGOID:
 
+							/*
+							 * For text search objects only, we weaken the
+							 * normal shippability criterion to allow all OIDs
+							 * below FirstNormalObjectId.  Without this, none
+							 * of the initdb-installed TS configurations would
+							 * be shippable, which would be quite annoying.
+							 */
+							if (DatumGetObjectId(c->constvalue) >= FirstNormalObjectId &&
+								!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  TSConfigRelationId, fpinfo))
+								return false;
+							break;
+						case REGDICTIONARYOID:
+							if (DatumGetObjectId(c->constvalue) >= FirstNormalObjectId &&
+								!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  TSDictionaryRelationId, fpinfo))
+								return false;
+							break;
+						case REGNAMESPACEOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  NamespaceRelationId, fpinfo))
+								return false;
+							break;
+						case REGROLEOID:
+							if (!dynamodb_is_shippable(DatumGetObjectId(c->constvalue),
+											  AuthIdRelationId, fpinfo))
+								return false;
+							break;
+					}
+				}
+#endif
 				/*
 				 * If the constant has nondefault collation, either it's of a
 				 * non-builtin type, or it reflects folding of a CollateExpr.

@@ -279,6 +279,7 @@ dynamodb_convert_nested_object_to_json_string(StringInfo output,
 				outputString = OidOutputFunctionCall(outputFunctionId, valueDatum);
 
 				appendStringInfo(output, "%s", outputString);
+				break;
 			}
 		case Aws::DynamoDB::Model::ValueType::BYTEBUFFER_SET:
 			{
@@ -552,7 +553,7 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 		default:
 			{
 				/* Should not happen */
-				elog(ERROR, "dynamodb_fdw: unsupported data type %d of DynamoDB", dynamodbVal.GetType());
+				elog(ERROR, "dynamodb_fdw: unsupported data type %d of DynamoDB", (int) dynamodbVal.GetType());
 			}
 	}
 

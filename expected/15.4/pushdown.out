@@ -556,17 +556,17 @@ SELECT string_agg(name, ':' ORDER BY name), string_agg(description, ',' ORDER BY
 --Testcase 55:
 EXPLAIN VERBOSE
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM agg_tbl WHERE description IS NOT NULL GROUP BY description HAVING min(id) <> 0 ORDER BY description;
-                                                               QUERY PLAN                                                               
-----------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=179.99..200.00 rows=199 width=160)
-   Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
-   Group Key: agg_tbl.description
-   Filter: (min(agg_tbl.id) <> 0)
-   ->  Sort  (cost=179.99..182.21 rows=886 width=68)
-         Output: description, name, id
-         Sort Key: agg_tbl.description
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=162.01..162.51 rows=199 width=160)
+   Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description
+   Sort Key: agg_tbl.description
+   ->  HashAggregate  (cost=149.91..154.41 rows=199 width=160)
+         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
+         Group Key: agg_tbl.description
+         Filter: (min(agg_tbl.id) <> 0)
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..136.62 rows=886 width=68)
-               Output: description, name, id
+               Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
                Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (description IS NOT NULL)
 (10 rows)
 
@@ -3196,18 +3196,18 @@ SELECT id, name, description FROM mixed_types WHERE id IN (SELECT id FROM mixed_
 --Testcase 329:
 EXPLAIN VERBOSE 
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM mixed_types WHERE description IS NOT NULL GROUP BY name, description ORDER BY description LIMIT 1;
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=179.99..180.09 rows=1 width=192)
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=154.91..154.91 rows=1 width=192)
    Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
-   ->  GroupAggregate  (cost=179.99..199.50 rows=200 width=192)
-         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
-         Group Key: mixed_types.description, mixed_types.name
-         ->  Sort  (cost=179.99..182.21 rows=886 width=68)
-               Output: description, name, id
-               Sort Key: mixed_types.description, mixed_types.name
+   ->  Sort  (cost=154.91..155.41 rows=200 width=192)
+         Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
+         Sort Key: mixed_types.description
+         ->  HashAggregate  (cost=149.91..153.91 rows=200 width=192)
+               Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
+               Group Key: mixed_types.description, mixed_types.name
                ->  Foreign Scan on public.mixed_types  (cost=100.00..136.62 rows=886 width=68)
-                     Output: description, name, id
+                     Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
                      Remote SQL: SELECT id, name, description FROM mixed_types WHERE (description IS NOT NULL)
 (11 rows)
 
@@ -5213,11 +5213,11 @@ SELECT name, score, courses FROM classes WHERE id IN (1, 3, 4, 9, 20);
 SELECT name, score, courses FROM classes WHERE id IN (1, 3, 4, 9, 20);
       name       |    score    |                     courses                      
 -----------------+-------------+--------------------------------------------------
- Earlene Scott   |  -30.858104 | {"majors": "Math", "sub-majors": "Physics"}
  Grant Delgado   |   45.231508 | {"majors": "Math", "sub-majors": "Physics"}
  Miriam Robinson | -121.388902 | {"majors": "Chemistry", "sub-majors": "Physics"}
- Lora Hamilton   | -122.859337 | {"majors": "Biology", "sub-majors": "Chemistry"}
  Thelma Fletcher |  -27.938899 | {"majors": "Modern Art", "sub-majors": "Music"}
+ Earlene Scott   |  -30.858104 | {"majors": "Math", "sub-majors": "Physics"}
+ Lora Hamilton   | -122.859337 | {"majors": "Biology", "sub-majors": "Chemistry"}
 (5 rows)
 
 --Testcase 541:

@@ -95,7 +95,7 @@ Supported platforms
 `dynamodb_fdw` was developed on Linux, and should run on any
 reasonably POSIX-compliant system.
 
-`dynamodb_fdw` is designed to be compatible with PostgreSQL 10 ~ 14.
+`dynamodb_fdw` is designed to be compatible with PostgreSQL 13 ~ 16.0.
 
 Installation
 ------------
@@ -217,7 +217,7 @@ Rules and problems with DynamoDB identifiers **yet not tested and described**.
 Generated columns
 -----------------
 
-Behavoiur within generated columns **yet not tested and described**. 
+Behaviour within generated columns **yet not tested and described**. 
 
 For more details on generated columns see:
 

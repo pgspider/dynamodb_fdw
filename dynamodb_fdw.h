@@ -18,7 +18,7 @@
 #include "nodes/pathnodes.h"
 #include "utils/relcache.h"
 #include "catalog/pg_operator.h"
-#define CODE_VERSION 10200
+#define CODE_VERSION 10300
 
 /*
  * Options structure to store the dynamodb
