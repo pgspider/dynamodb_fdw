@@ -112,7 +112,7 @@ SELECT artist, songtitle, albumtitle FROM connection_tbl ORDER BY 1, 2;
 
 --Testcase 23:
 INSERT INTO connection_tbl VALUES ('8', 'SomE oNe LiKE yOu', 'RECORD INSERTED');
-ERROR:  dynamodb_fdw: failed to execute remote SQL: Duplicate primary key exists in table 
+ERROR:  dynamodb_fdw: failed to execute remote SQL: Unable to parse ExceptionName: com.amazonaws.dynamodb.v20120810#DuplicateItem Message: Duplicate primary key exists in table 
    sql=INSERT INTO connection_tbl VALUE {'artist' : ?, 'songtitle' : ?, 'albumtitle' : ?};
 -- Should fail to update/delete the data with an error
 --Testcase 24:
@@ -151,7 +151,7 @@ ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connec
 --Testcase 30:
 UPDATE connection_tbl SET albumtitle = 'RECORD UPDATED' WHERE artist = '1';
 ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connect to server 
-   sql=SELECT artist, songtitle FROM connection_tbl WHERE (artist = '1')
+   sql=SELECT artist, songtitle, albumtitle FROM connection_tbl WHERE (artist = '1')
 --Testcase 31:
 DELETE FROM connection_tbl WHERE artist = '1';
 ERROR:  dynamodb_fdw: failed to execute remote SQL: curlCode: 7, Couldn't connect to server 

@@ -33,6 +33,9 @@ aws dynamodb delete-table --table-name classes --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name J1_TBL --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name J2_TBL --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name test_jsonb_subscript --endpoint-url $DYNAMODB_ENDPOINT
+aws dynamodb delete-table --table-name test_jsonb_subscript_text --endpoint-url $DYNAMODB_ENDPOINT
+aws dynamodb delete-table --table-name repeat_json_tbl --endpoint-url $DYNAMODB_ENDPOINT
+aws dynamodb delete-table --table-name pg_input_is_valid_tbl --endpoint-url $DYNAMODB_ENDPOINT
 
 # for connection_validation.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
@@ -146,6 +149,11 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name jspoptest -
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name jspoptest --item $'{"ID": {"N":"2"}, "js":{"M":{"jsa":{"L":[{"N":"1"}, {"S":"2"}, {"NULL":true}, {"N":"4"}]}, "rec":{"M":{"a":{"S":"abc"}, "c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}, "reca":{"L":[{"M":{"a":{"S":"abc"}, "b":{"N":"456"}}}, {"NULL":true}, {"M":{"c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}]}}}}'
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name jspoptest --item $'{"ID": {"N":"3"}, "js":{"M":{"jsa":{"L":[{"N":"1"}, {"S":"2"}, {"NULL":true}, {"N":"4"}]}, "rec":{"M":{"a":{"S":"abc"}, "c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}, "reca":{"L":[{"M":{"a":{"S":"abc"}, "b":{"N":"456"}}}, {"NULL":true}, {"M":{"c":{"S":"01.02.2003"}, "x":{"N":"43.2"}}}]}}}}'
 
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
+        create-table --table-name test_jsonb_subscript_text \
+        --attribute-definitions AttributeName=id,AttributeType=S \
+        --key-schema AttributeName=id,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
 # for extra/json.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
@@ -182,6 +190,20 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name foo_json --item $'{"serial_num": {"N":"847001"}, "name":{"S":"t15"}, "type":{"S":"GE1043"}}'
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name foo_json --item $'{"serial_num": {"N":"847002"}, "name":{"S":"t16"}, "type":{"S":"GE1043"}}'
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name foo_json --item $'{"serial_num": {"N":"847003"}, "name":{"S":"sub-alpha"}, "type":{"S":"GESS90"}}'
+
+
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
+        create-table --table-name repeat_json_tbl \
+        --attribute-definitions AttributeName=ID,AttributeType=N \
+        --key-schema AttributeName=ID,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
+
+
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
+        create-table --table-name pg_input_is_valid_tbl \
+        --attribute-definitions AttributeName=ID,AttributeType=N \
+        --key-schema AttributeName=ID,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
 
 # for extra/jsonb.sql test

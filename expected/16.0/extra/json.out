@@ -1,0 +1,762 @@
+\set ECHO none
+--Testcase 1:
+CREATE EXTENSION IF NOT EXISTS dynamodb_fdw;
+--Testcase 2:
+CREATE SERVER dynamodb_server FOREIGN DATA WRAPPER dynamodb_fdw
+  OPTIONS (endpoint :DYNAMODB_ENDPOINT);
+--Testcase 3:
+CREATE USER MAPPING FOR public SERVER dynamodb_server 
+  OPTIONS (user :DYNAMODB_USER, password :DYNAMODB_PASSWORD);
+-- Check fast path for longer strings (at least 16 bytes long)
+CREATE FOREIGN TABLE repeat_json_tbl ("ID" int, x json) SERVER dynamodb_server OPTIONS (table_name 'repeat_json_tbl', partition_key 'ID');
+INSERT INTO repeat_json_tbl VALUES (0, ('"'||repeat('.', 12)||'abc"')::json); -- OK
+SELECT x FROM repeat_json_tbl;
+         x         
+-------------------
+ "............abc"
+(1 row)
+
+DELETE FROM repeat_json_tbl;
+INSERT INTO repeat_json_tbl VALUES (1, ('"'||repeat('.', 12)||'abc\\n"')::json); -- OK, legal escapes
+SELECT x FROM repeat_json_tbl;
+          x           
+----------------------
+ "............abc\\n"
+(1 row)
+
+DELETE FROM repeat_json_tbl;
+-- test non-error-throwing input
+CREATE FOREIGN TABLE pg_input_is_valid_tbl ("ID" int, x text) SERVER dynamodb_server OPTIONS (table_name 'pg_input_is_valid_tbl', partition_key 'ID');
+INSERT INTO pg_input_is_valid_tbl VALUES (0, '{"a":true}');
+SELECT pg_input_is_valid(x, 'json') FROM pg_input_is_valid_tbl;
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
+DELETE FROM pg_input_is_valid_tbl;
+INSERT INTO pg_input_is_valid_tbl VALUES (1, '{"a":true');
+SELECT pg_input_is_valid(x, 'json') FROM pg_input_is_valid_tbl;
+ pg_input_is_valid 
+-------------------
+ f
+(1 row)
+
+SELECT * FROM pg_input_error_info((SELECT x FROM pg_input_is_valid_tbl), 'json');
+              message               |                detail                | hint | sql_error_code 
+------------------------------------+--------------------------------------+------+----------------
+ invalid input syntax for type json | The input string ended unexpectedly. |      | 22P02
+(1 row)
+
+DELETE FROM pg_input_is_valid_tbl;
+--constructors
+-- row_to_json
+--Testcase 4:
+CREATE FOREIGN TABLE rows ("ID" int, x int, y text)
+ SERVER dynamodb_server OPTIONS (table_name 'rows_json', partition_key 'ID');
+--Testcase 5:
+EXPLAIN VERBOSE
+SELECT row_to_json(q,true)
+FROM rows q;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Foreign Scan on public.rows q  (cost=100.00..140.22 rows=930 width=32)
+   Output: row_to_json(q.*, true)
+   Remote SQL: SELECT ID, x, y FROM rows_json
+(3 rows)
+
+--Testcase 6:
+SELECT row_to_json(q,true)
+FROM rows q;
+ row_to_json  
+--------------
+ {"ID":2,    +
+  "x":2,     +
+  "y":"txt2"}
+ {"ID":1,    +
+  "x":1,     +
+  "y":"txt1"}
+ {"ID":3,    +
+  "x":3,     +
+  "y":"txt3"}
+(3 rows)
+
+--Testcase 7:
+EXPLAIN VERBOSE
+SELECT row_to_json(row((select array_agg(x) as d from generate_series(5,10) x)),false);
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Result  (cost=0.09..0.10 rows=1 width=32)
+   Output: row_to_json(ROW($0), false)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=0.08..0.09 rows=1 width=32)
+           Output: array_agg(x.x)
+           ->  Function Scan on pg_catalog.generate_series x  (cost=0.00..0.06 rows=6 width=4)
+                 Output: x.x
+                 Function Call: generate_series(5, 10)
+(8 rows)
+
+--Testcase 8:
+SELECT row_to_json(row((select array_agg(x) as d from generate_series(5,10) x)),false);
+      row_to_json      
+-----------------------
+ {"f1":[5,6,7,8,9,10]}
+(1 row)
+
+--json_agg
+--Testcase 9:
+EXPLAIN VERBOSE
+SELECT json_agg(q ORDER BY x, y)
+  FROM rows q;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Aggregate  (cost=164.01..164.02 rows=1 width=32)
+   Output: json_agg(q.* ORDER BY x, y)
+   ->  Sort  (cost=160.71..162.36 rows=660 width=100)
+         Output: q.*, x, y
+         Sort Key: q.x, q.y
+         ->  Foreign Scan on public.rows q  (cost=100.00..129.80 rows=660 width=100)
+               Output: q.*, x, y
+               Remote SQL: SELECT ID, x, y FROM rows_json
+(8 rows)
+
+--Testcase 10:
+SELECT json_agg(q ORDER BY x, y)
+  FROM rows q;
+           json_agg           
+------------------------------
+ [{"ID":1,"x":1,"y":"txt1"}, +
+  {"ID":2,"x":2,"y":"txt2"}, +
+  {"ID":3,"x":3,"y":"txt3"}]
+(1 row)
+
+--Testcase 11:
+EXPLAIN VERBOSE
+UPDATE rows SET x = NULL WHERE x = 1;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Update on public.rows  (cost=100.00..121.21 rows=0 width=0)
+   Remote SQL: UPDATE rows_json SET x = ? WHERE ID = ?
+   ->  Foreign Scan on public.rows  (cost=100.00..121.21 rows=4 width=72)
+         Output: NULL::integer, "ID", rows.*
+         Remote SQL: SELECT ID, x, y FROM rows_json WHERE (x = 1)
+(5 rows)
+
+--Testcase 12:
+UPDATE rows SET x = NULL WHERE x = 1;
+--Testcase 13:
+EXPLAIN VERBOSE
+SELECT json_agg(q ORDER BY x NULLS FIRST, y)
+  FROM rows q;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Aggregate  (cost=164.01..164.02 rows=1 width=32)
+   Output: json_agg(q.* ORDER BY x NULLS FIRST, y)
+   ->  Sort  (cost=160.71..162.36 rows=660 width=100)
+         Output: q.*, x, y
+         Sort Key: q.x NULLS FIRST, q.y
+         ->  Foreign Scan on public.rows q  (cost=100.00..129.80 rows=660 width=100)
+               Output: q.*, x, y
+               Remote SQL: SELECT ID, x, y FROM rows_json
+(8 rows)
+
+--Testcase 14:
+SELECT json_agg(q ORDER BY x NULLS FIRST, y)
+  FROM rows q;
+            json_agg             
+---------------------------------
+ [{"ID":1,"x":null,"y":"txt1"}, +
+  {"ID":2,"x":2,"y":"txt2"},    +
+  {"ID":3,"x":3,"y":"txt3"}]
+(1 row)
+
+-- json extraction functions
+--Testcase 15:
+CREATE FOREIGN TABLE test_json ("ID" int, json_type text, test_json json)
+ SERVER dynamodb_server OPTIONS (table_name 'test_json', partition_key 'ID');
+--Testcase 16:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'scalar';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_json WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 17:
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 18:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'array';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 19:
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'array';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 20:
+EXPLAIN VERBOSE
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'object';
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'x'::text))
+   Remote SQL: SELECT test_json."x", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 21:
+SELECT test_json -> 'x'
+FROM test_json
+WHERE json_type = 'object';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 22:
+EXPLAIN VERBOSE
+SELECT test_json->'field2'
+FROM test_json
+WHERE json_type = 'object';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 23:
+SELECT test_json->'field2'
+FROM test_json
+WHERE json_type = 'object';
+ ?column? 
+----------
+ "val2"
+(1 row)
+
+--Testcase 24:
+EXPLAIN VERBOSE
+SELECT test_json->>'field2'
+FROM test_json
+WHERE json_type = 'object';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field2'::text))
+   Remote SQL: SELECT test_json."field2", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 25:
+SELECT test_json->>'field2'
+FROM test_json
+WHERE json_type = 'object';
+ ?column? 
+----------
+ val2
+(1 row)
+
+--Testcase 26:
+EXPLAIN VERBOSE
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'scalar';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_json WHERE (json_type = 'scalar')
+(3 rows)
+
+--Testcase 27:
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'scalar';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 28:
+EXPLAIN VERBOSE
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'array';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 29:
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'array';
+ ?column? 
+----------
+ "two"
+(1 row)
+
+--Testcase 30:
+EXPLAIN VERBOSE
+SELECT test_json -> -1
+FROM test_json
+WHERE json_type = 'array';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: (test_json -> '-1'::integer)
+   Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 31:
+SELECT test_json -> -1
+FROM test_json
+WHERE json_type = 'array';
+ ?column? 
+----------
+ {"f1":9}
+(1 row)
+
+--Testcase 32:
+EXPLAIN VERBOSE
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'object';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json -> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 33:
+SELECT test_json -> 2
+FROM test_json
+WHERE json_type = 'object';
+ ?column? 
+----------
+ 
+(1 row)
+
+--Testcase 34:
+EXPLAIN VERBOSE
+SELECT test_json->>2
+FROM test_json
+WHERE json_type = 'array';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 2))
+   Remote SQL: SELECT test_json[2], json_type FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 35:
+SELECT test_json->>2
+FROM test_json
+WHERE json_type = 'array';
+ ?column? 
+----------
+ two
+(1 row)
+
+--Testcase 36:
+EXPLAIN VERBOSE
+SELECT test_json ->> 6 FROM test_json WHERE json_type = 'array';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 6))
+   Remote SQL: SELECT test_json[6], json_type FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 37:
+SELECT test_json ->> 6 FROM test_json WHERE json_type = 'array';
+ ?column? 
+----------
+ [1,2,3]
+(1 row)
+
+--Testcase 38:
+EXPLAIN VERBOSE
+SELECT test_json ->> 7 FROM test_json WHERE json_type = 'array';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 7))
+   Remote SQL: SELECT test_json[7], json_type FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 39:
+SELECT test_json ->> 7 FROM test_json WHERE json_type = 'array';
+ ?column? 
+----------
+ {"f1":9}
+(1 row)
+
+--Testcase 40:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field4' FROM test_json WHERE json_type = 'object';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field4'::text))
+   Remote SQL: SELECT test_json."field4", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 41:
+SELECT test_json ->> 'field4' FROM test_json WHERE json_type = 'object';
+ ?column? 
+----------
+ 4
+(1 row)
+
+--Testcase 42:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field5' FROM test_json WHERE json_type = 'object';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field5'::text))
+   Remote SQL: SELECT test_json."field5", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 43:
+SELECT test_json ->> 'field5' FROM test_json WHERE json_type = 'object';
+ ?column? 
+----------
+ [1,2,3]
+(1 row)
+
+--Testcase 44:
+EXPLAIN VERBOSE
+SELECT test_json ->> 'field6' FROM test_json WHERE json_type = 'object';
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=32)
+   Output: ((test_json ->> 'field6'::text))
+   Remote SQL: SELECT test_json."field6", json_type FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 45:
+SELECT test_json ->> 'field6' FROM test_json WHERE json_type = 'object';
+ ?column? 
+----------
+ {"f1":9}
+(1 row)
+
+--Testcase 46:
+EXPLAIN VERBOSE
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'scalar';
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: json_object_keys(test_json)
+   ->  Foreign Scan on public.test_json  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'scalar')
+(5 rows)
+
+--Testcase 47:
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'scalar';
+ERROR:  cannot call json_object_keys on a scalar
+--Testcase 48:
+EXPLAIN VERBOSE
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'array';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: json_object_keys(test_json)
+   ->  Foreign Scan on public.test_json  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'array')
+(5 rows)
+
+--Testcase 49:
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'array';
+ERROR:  cannot call json_object_keys on an array
+--Testcase 50:
+EXPLAIN VERBOSE
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'object';
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ ProjectSet  (cost=100.00..131.97 rows=700 width=32)
+   Output: json_object_keys(test_json)
+   ->  Foreign Scan on public.test_json  (cost=100.00..128.41 rows=7 width=32)
+         Output: "ID", json_type, test_json
+         Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'object')
+(5 rows)
+
+--Testcase 51:
+SELECT json_object_keys(test_json)
+FROM test_json
+WHERE json_type = 'object';
+ json_object_keys 
+------------------
+ field1
+ field2
+ field3
+ field4
+ field5
+ field6
+(6 rows)
+
+-- nulls
+--Testcase 52:
+EXPLAIN VERBOSE
+select (test_json->'field3') is null as expect_false
+from test_json
+where json_type = 'object';
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json -> 'field3'::text) IS NULL)
+   Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 53:
+select (test_json->'field3') is null as expect_false
+from test_json
+where json_type = 'object';
+ expect_false 
+--------------
+ f
+(1 row)
+
+--Testcase 54:
+EXPLAIN VERBOSE
+select (test_json->>'field3') is null as expect_true
+from test_json
+where json_type = 'object';
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json ->> 'field3'::text) IS NULL)
+   Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'object')
+(3 rows)
+
+--Testcase 55:
+select (test_json->>'field3') is null as expect_true
+from test_json
+where json_type = 'object';
+ expect_true 
+-------------
+ t
+(1 row)
+
+--Testcase 56:
+EXPLAIN VERBOSE
+select (test_json->3) is null as expect_false
+from test_json
+where json_type = 'array';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json -> 3) IS NULL)
+   Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 57:
+select (test_json->3) is null as expect_false
+from test_json
+where json_type = 'array';
+ expect_false 
+--------------
+ f
+(1 row)
+
+--Testcase 58:
+EXPLAIN VERBOSE
+select (test_json->>3) is null as expect_true
+from test_json
+where json_type = 'array';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Foreign Scan on public.test_json  (cost=100.00..128.43 rows=7 width=1)
+   Output: ((test_json ->> 3) IS NULL)
+   Remote SQL: SELECT test_json FROM test_json WHERE (json_type = 'array')
+(3 rows)
+
+--Testcase 59:
+select (test_json->>3) is null as expect_true
+from test_json
+where json_type = 'array';
+ expect_true 
+-------------
+ t
+(1 row)
+
+-- populate_record
+--Testcase 60:
+create type jpop as (a text, b int, c timestamp);
+--Testcase 61:
+CREATE DOMAIN js_int_array_1d  AS int[]   CHECK(array_length(VALUE, 1) = 3);
+--Testcase 62:
+CREATE DOMAIN js_int_array_2d  AS int[][] CHECK(array_length(VALUE, 2) = 3);
+--Testcase 63:
+CREATE TYPE jsrec AS (
+	i int,
+	ia _int4,
+	ia1 int[],
+	ia2 int[][],
+	ia3 int[][][],
+	ia1d js_int_array_1d,
+	ia2d js_int_array_2d,
+	t text,
+	ta text[],
+	c char(10),
+	ca char(10)[],
+	ts timestamp,
+	js json,
+	jsb jsonb,
+	jsa json[],
+	rec jpop,
+	reca jpop[]
+);
+-- test type info caching in json_populate_record()
+--Testcase 64:
+CREATE FOREIGN TABLE jspoptest ("ID" int, js json)
+ SERVER dynamodb_server OPTIONS (table_name 'jspoptest', partition_key 'ID');
+--Testcase 65:
+EXPLAIN VERBOSE
+SELECT (json_populate_record(NULL::jsrec, js)).* FROM jspoptest;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.jspoptest  (cost=100.00..216.00 rows=1462 width=504)
+   Output: (json_populate_record(NULL::jsrec, js, false)).i, (json_populate_record(NULL::jsrec, js, false)).ia, (json_populate_record(NULL::jsrec, js, false)).ia1, (json_populate_record(NULL::jsrec, js, false)).ia2, (json_populate_record(NULL::jsrec, js, false)).ia3, (json_populate_record(NULL::jsrec, js, false)).ia1d, (json_populate_record(NULL::jsrec, js, false)).ia2d, (json_populate_record(NULL::jsrec, js, false)).t, (json_populate_record(NULL::jsrec, js, false)).ta, (json_populate_record(NULL::jsrec, js, false)).c, (json_populate_record(NULL::jsrec, js, false)).ca, (json_populate_record(NULL::jsrec, js, false)).ts, (json_populate_record(NULL::jsrec, js, false)).js, (json_populate_record(NULL::jsrec, js, false)).jsb, (json_populate_record(NULL::jsrec, js, false)).jsa, (json_populate_record(NULL::jsrec, js, false)).rec, (json_populate_record(NULL::jsrec, js, false)).reca
+   Remote SQL: SELECT js FROM jspoptest
+(3 rows)
+
+--Testcase 66:
+SELECT (json_populate_record(NULL::jsrec, js)).* FROM jspoptest;
+ i | ia | ia1 | ia2 | ia3 | ia1d | ia2d | t | ta | c | ca | ts | js | jsb |        jsa         |                rec                |                          reca                          
+---+----+-----+-----+-----+------+------+---+----+---+----+----+----+-----+--------------------+-----------------------------------+--------------------------------------------------------
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+   |    |     |     |     |      |      |   |    |   |    |    |    |     | {1,"\"2\"",NULL,4} | (abc,,"Thu Jan 02 00:00:00 2003") | {"(abc,456,)",NULL,"(,,\"Thu Jan 02 00:00:00 2003\")"}
+(3 rows)
+
+--Testcase 67:
+DROP TYPE jsrec;
+--Testcase 68:
+DROP DOMAIN js_int_array_1d;
+--Testcase 69:
+DROP DOMAIN js_int_array_2d;
+--Testcase 70:
+CREATE FOREIGN TABLE foo (serial_num int, name text, type text)
+ SERVER dynamodb_server OPTIONS (table_name 'foo_json', partition_key 'serial_num');
+--Testcase 71:
+EXPLAIN VERBOSE
+SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type)))
+FROM foo;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=141.15..141.16 rows=1 width=32)
+   Output: json_build_object('turbines', json_object_agg(serial_num, json_build_object('name', name, 'type', type)))
+   ->  Foreign Scan on public.foo  (cost=100.00..136.70 rows=890 width=68)
+         Output: serial_num, name, type
+         Remote SQL: SELECT serial_num, name, type FROM foo_json
+(5 rows)
+
+--Testcase 72:
+SELECT json_build_object('turbines',json_object_agg(serial_num,json_build_object('name',name,'type',type)))
+FROM foo;
+                                                                            json_build_object                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"turbines" : { "847001" : {"name" : "t15", "type" : "GE1043"}, "847002" : {"name" : "t16", "type" : "GE1043"}, "847003" : {"name" : "sub-alpha", "type" : "GESS90"} }}
+(1 row)
+
+--Testcase 73:
+EXPLAIN VERBOSE
+SELECT json_object_agg(name, type) FROM foo;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate  (cost=140.23..140.24 rows=1 width=32)
+   Output: json_object_agg(name, type)
+   ->  Foreign Scan on public.foo  (cost=100.00..137.90 rows=930 width=64)
+         Output: serial_num, name, type
+         Remote SQL: SELECT name, type FROM foo_json
+(5 rows)
+
+--Testcase 74:
+SELECT json_object_agg(name, type) FROM foo;
+                        json_object_agg                         
+----------------------------------------------------------------
+ { "t15" : "GE1043", "t16" : "GE1043", "sub-alpha" : "GESS90" }
+(1 row)
+
+--Testcase 75:
+EXPLAIN VERBOSE
+INSERT INTO foo VALUES (999999, NULL, 'bar');
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Insert on public.foo  (cost=0.00..0.01 rows=0 width=0)
+   Remote SQL: INSERT INTO foo_json VALUE {'serial_num' : ?, 'name' : ?, 'type' : ?};
+   ->  Result  (cost=0.00..0.01 rows=1 width=68)
+         Output: 999999, NULL::text, 'bar'::text
+(4 rows)
+
+--Testcase 76:
+INSERT INTO foo VALUES (999999, NULL, 'bar');
+--Testcase 77:
+EXPLAIN VERBOSE
+SELECT json_object_agg(name, type) FROM foo;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate  (cost=140.23..140.24 rows=1 width=32)
+   Output: json_object_agg(name, type)
+   ->  Foreign Scan on public.foo  (cost=100.00..137.90 rows=930 width=64)
+         Output: serial_num, name, type
+         Remote SQL: SELECT name, type FROM foo_json
+(5 rows)
+
+--Testcase 78:
+SELECT json_object_agg(name, type) FROM foo;
+ERROR:  null value not allowed for object key
+--Testcase 79:
+DROP USER MAPPING FOR public SERVER dynamodb_server;
+--Testcase 80:
+DROP EXTENSION dynamodb_fdw CASCADE;
+NOTICE:  drop cascades to 7 other objects
+DETAIL:  drop cascades to server dynamodb_server
+drop cascades to foreign table repeat_json_tbl
+drop cascades to foreign table pg_input_is_valid_tbl
+drop cascades to foreign table rows
+drop cascades to foreign table test_json
+drop cascades to foreign table jspoptest
+drop cascades to foreign table foo
+ 

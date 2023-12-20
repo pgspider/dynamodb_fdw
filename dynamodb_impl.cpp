@@ -37,6 +37,11 @@ extern "C"
 #include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#if (PG_VERSION_NUM >= 130010 && PG_VERSION_NUM < 140000) || \
+    (PG_VERSION_NUM >= 140007 && PG_VERSION_NUM < 150000) || \
+    (PG_VERSION_NUM >= 150003)
+#include "optimizer/inherit.h"
+#endif
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -752,7 +757,18 @@ dynamodbBeginForeignScan(ForeignScanState *node, int eflags)
 	 */
 	fsstate = (DynamoDBFdwScanState *) palloc0(sizeof(DynamoDBFdwScanState));
 	node->fdw_state = (void *) fsstate;
-
+#if (PG_VERSION_NUM >= 160000)
+	/*
+	 * Identify which user to do the remote access as.  This should match what
+	 * ExecCheckPermissions() does.
+	 */
+	userid = OidIsValid(fsplan->checkAsUser) ? fsplan->checkAsUser : GetUserId();
+	if (fsplan->scan.scanrelid > 0)
+		rtindex = fsplan->scan.scanrelid;
+	else
+		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+	rte = exec_rt_fetch(rtindex, estate);
+#else
 	/*
 	 * Identify which user to do the remote access as.  This should match what
 	 * ExecCheckRTEPerms() does.  In case of a join or aggregate, use the
@@ -765,7 +781,7 @@ dynamodbBeginForeignScan(ForeignScanState *node, int eflags)
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
 	rte = exec_rt_fetch(rtindex, estate);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
+#endif
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
 	user = GetUserMapping(userid, table->serverid);
@@ -1028,7 +1044,12 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	else if (operation == CMD_UPDATE)
 	{
 		int			col = -1;
+#if (PG_VERSION_NUM >= 130010 && PG_VERSION_NUM < 140000) || (PG_VERSION_NUM >= 140007 && PG_VERSION_NUM < 150000) || (PG_VERSION_NUM >= 150003)
+		RelOptInfo *rel = find_base_rel(root, resultRelation);
+		Bitmapset  *allUpdatedCols = get_rel_all_updated_cols(root, rel);
+#else
 		Bitmapset  *allUpdatedCols = bms_union(rte->updatedCols, rte->extraUpdatedCols);
+#endif
 		ListCell   *lc;
 
 		/*
@@ -1487,13 +1508,16 @@ dynamodb_create_foreign_modify(EState *estate,
 	/* Begin constructing DynamoDBFdwModifyState. */
 	fmstate = (DynamoDBFdwModifyState *) palloc0(sizeof(DynamoDBFdwModifyState));
 	fmstate->rel = rel;
-
+#if (PG_VERSION_NUM >= 160000)
+	/* Identify which user to do the remote access as. */
+	userid = ExecGetResultRelCheckAsUser(resultRelInfo, estate);
+#else
 	/*
 	 * Identify which user to do the remote access as.  This should match what
 	 * ExecCheckRTEPerms() does.
 	 */
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
-
+#endif
 	/* Get info about foreign table. */
 	table = GetForeignTable(RelationGetRelid(rel));
 	user = GetUserMapping(userid, table->serverid);

@@ -77,7 +77,11 @@ InvalidateShippableCacheCallback(Datum arg, int cacheid, uint32 hashvalue)
 	while ((entry = (ShippableCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
 		if (hash_search(ShippableCacheHash,
+#if (PG_VERSION_NUM >= 160000)
+						&entry->key,
+#else
 						(void *) &entry->key,
+#endif
 						HASH_REMOVE,
 						NULL) == NULL)
 			elog(ERROR, "dynamodb_fdw: hash table corrupted");
@@ -187,10 +191,14 @@ dynamodb_is_shippable(Oid objectId, Oid classId, DynamoDBFdwRelationInfo *fpinfo
 
 	/* See if we already cached the result. */
 	entry = (ShippableCacheEntry *)
+#if (PG_VERSION_NUM >= 160000)
+		hash_search(ShippableCacheHash, &key, HASH_FIND, NULL);
+#else
 		hash_search(ShippableCacheHash,
 					(void *) &key,
 					HASH_FIND,
 					NULL);
+#endif
 
 	if (!entry)
 	{
@@ -203,11 +211,14 @@ dynamodb_is_shippable(Oid objectId, Oid classId, DynamoDBFdwRelationInfo *fpinfo
 		 * cache invalidation.
 		 */
 		entry = (ShippableCacheEntry *)
+#if (PG_VERSION_NUM >= 160000)
+			hash_search(ShippableCacheHash, &key, HASH_ENTER, NULL);
+#else
 			hash_search(ShippableCacheHash,
 						(void *) &key,
 						HASH_ENTER,
 						NULL);
-
+#endif
 		entry->shippable = shippable;
 	}
 
