@@ -95,7 +95,7 @@ Supported platforms
 `dynamodb_fdw` was developed on Linux, and should run on any
 reasonably POSIX-compliant system.
 
-`dynamodb_fdw` is designed to be compatible with PostgreSQL 13 ~ 16.0.
+`dynamodb_fdw` is designed to be compatible with PostgreSQL 13 ~ 17.0.
 
 Installation
 ------------
