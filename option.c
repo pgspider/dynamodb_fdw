@@ -44,6 +44,7 @@ static bool is_valid_option(const char *option, Oid context);
 static struct DynamodbFdwOption valid_options[] =
 {
 	/* Connection options */
+	{"region", ForeignServerRelationId},
 	{"endpoint", ForeignServerRelationId},
 	{"partition_key", ForeignTableRelationId},
 	{"sort_key", ForeignTableRelationId},
@@ -190,6 +191,9 @@ dynamodb_opt *dynamodb_get_options(Oid foreignoid)
 	foreach(lc, options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "region") == 0)
+			opt->svr_region = defGetString(def);
 
 		if (strcmp(def->defname, "endpoint") == 0)
 			opt->svr_endpoint = defGetString(def);
