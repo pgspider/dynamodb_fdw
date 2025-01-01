@@ -141,6 +141,10 @@ Usage
 
   The URL of the entry point for an AWS web service. It is required for AWS DynamoDB and optional for DynamoDB local.
 
+- **region** as *string*, optional
+
+  The AWS region of the AWS DynamoDB service.
+
 ## CREATE USER MAPPING options
 
 `dynamodb_fdw` accepts the following options via the `CREATE USER MAPPING`

@@ -26,6 +26,7 @@
  */
 typedef struct dynamodb_opt
 {
+	char	   *svr_region;			/* dynamodb region */
 	char	   *svr_endpoint;		/* dynamodb server ip address */
 	char	   *svr_username;		/* dynamodb user name */
 	char	   *svr_password;		/* dynamodb password */

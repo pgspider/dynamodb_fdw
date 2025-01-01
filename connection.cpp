@@ -75,6 +75,7 @@ static void dynamodb_check_conn_params(dynamodb_opt *opt);
 static void dynamodb_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
 static Aws::DynamoDB::DynamoDBClient *dynamodb_client_open(const char *user,
 														const char *password,
+														const char *region,
 														const char *endpoint);
 static void dynamodb_delete_client(Aws::DynamoDB::DynamoDBClient *dynamoDB_client);
 
@@ -211,7 +212,7 @@ dynamodb_create_connection(ForeignServer *server, UserMapping *user)
 		/* verify connection parameters and make connection */
 		dynamodb_check_conn_params(opt);
 
-		conn = dynamodb_client_open(opt->svr_username, opt->svr_password, opt->svr_endpoint);
+		conn = dynamodb_client_open(opt->svr_username, opt->svr_password, opt->svr_region, opt->svr_endpoint);
 
 		if (!conn)
 			ereport(ERROR,
@@ -307,13 +308,16 @@ dynamodb_inval_callback(Datum arg, int cacheid, uint32 hashvalue)
  * Create dynamoDB handle.
  */
 static Aws::DynamoDB::DynamoDBClient*
-dynamodb_client_open(const char *user, const char *password, const char *endpoint)
+dynamodb_client_open(const char *user, const char *password, const char *region, const char *endpoint)
 {
 	const Aws::String access_key_id = user;
 	const Aws::String secret_access_key = password;
 	Aws::Client::ClientConfiguration clientConfig;
 	Aws::DynamoDB::DynamoDBClient *dynamo_client;
 	Aws::Auth::AWSCredentials cred(access_key_id, secret_access_key);
+
+	if (region)
+	  clientConfig.region = region;
 
 	clientConfig.endpointOverride = endpoint;
 
