@@ -123,7 +123,7 @@ dynamodb_convert_set_to_array(const Aws::Vector<Aws::String> val,
 
 	for (const auto &item : val)
 	{
-		valueDatum = CStringGetDatum((char *) item.c_str());
+		valueDatum = CStringGetDatum(pstrdup(item.c_str()));
 		datumArr[i] = OidFunctionCall3(*typeinput, valueDatum,
 											ObjectIdGetDatum(InvalidOid),
 											Int32GetDatum(*typemod));
@@ -465,7 +465,7 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 				Aws::String val = dynamodbVal.GetN();
 
 				if (is_compatible_type(pgtyp, dynamodbVal.GetType()))
-					valueDatum = CStringGetDatum((char *) val.c_str());
+					valueDatum = CStringGetDatum(pstrdup(val.c_str()));
 				else
 				{
 					StringInfo	buffer = makeStringInfo();
@@ -480,7 +480,7 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 				Aws::String val = dynamodbVal.GetS();
 
 				if (is_compatible_type(pgtyp, dynamodbVal.GetType()))
-					valueDatum = CStringGetDatum((char *) val.c_str());
+					valueDatum = CStringGetDatum(pstrdup(val.c_str()));
 				else
 				{
 					StringInfo	buffer = makeStringInfo();
