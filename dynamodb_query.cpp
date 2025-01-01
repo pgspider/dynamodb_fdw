@@ -529,7 +529,12 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 				if (pgtyp == JSONOID)
 				{
 					result = cstring_to_text_with_len(buffer->data, buffer->len);
+#if PG_VERSION_NUM >= 170000
+					JsonLexContext lexctx;
+					lex = makeJsonLexContext(&lexctx, result, false);
+#else
 					lex = makeJsonLexContext(result, false);
+#endif
 					pg_parse_json(lex, &nullSemAction);
 					return PointerGetDatum(result);
 				}
