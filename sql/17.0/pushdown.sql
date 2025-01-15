@@ -1983,6 +1983,117 @@ DROP FOREIGN TABLE J1_TBL;
 --Testcase 667:
 DROP FOREIGN TABLE J2_TBL;
 
+--Testcase 683:
+CREATE FOREIGN TABLE binary_type (
+    id int,
+    belem bytea,
+    barray bytea[],
+    bmap jsonb,
+    blist jsonb
+)
+SERVER dynamodb_server OPTIONS (table_name 'binary_type', partition_key 'id');
+
+-- Display original values
+SET bytea_output = 'escape';
+--Testcase 692:
+EXPLAIN VERBOSE
+SELECT * FROM binary_type;
+--Testcase 693:
+SELECT * FROM binary_type;
+
+-- Display hex values
+SET bytea_output = 'hex';
+
+--Testcase 684:
+EXPLAIN VERBOSE
+SELECT * FROM binary_type;
+--Testcase 685:
+SELECT * FROM binary_type;
+
+--Testcase 686:
+EXPLAIN VERBOSE
+SELECT barray[1], barray[2] FROM binary_type;
+--Testcase 687:
+SELECT barray[1], barray[2] FROM binary_type;
+
+--Testcase 688:
+EXPLAIN VERBOSE
+SELECT bmap['belem'], bmap['barray'] FROM binary_type;
+--Testcase 689:
+SELECT bmap['belem'], bmap['barray'] FROM binary_type;
+
+--Testcase 690:
+EXPLAIN VERBOSE
+SELECT blist[0], blist[1] FROM binary_type;
+--Testcase 691:
+SELECT blist[0], blist[1] FROM binary_type;
+
+-- Test modification
+--Testcase 694:
+INSERT INTO binary_type(id, belem, barray) VALUES (3, 'Building'::bytea, '{"Red", "Yellow"}'::bytea[]);
+--Testcase 695:
+SELECT * FROM binary_type;
+
+-- Display original values
+SET bytea_output = 'escape';
+
+--Testcase 707:
+SELECT * FROM binary_type;
+SET bytea_output = 'hex';
+
+--Testcase 696:
+UPDATE binary_type SET belem = 'Tower'::bytea, barray = '{"Blue", "Green"}'::bytea[] WHERE id = 3;
+--Testcase 697:
+SELECT * FROM binary_type;
+
+-- Display original values
+SET bytea_output = 'escape';
+
+--Testcase 708:
+SELECT * FROM binary_type;
+SET bytea_output = 'hex';
+
+--Testcase 698:
+DELETE FROM binary_type WHERE id = 3;
+--Testcase 699:
+SELECT * FROM binary_type;
+
+-- Insert hex value
+--Testcase 709:
+INSERT INTO binary_type(id, belem, barray) VALUES (3, '\x4275696c64696e67', '{"\\x526564","\\x59656c6c6f77"}');
+ --Testcase 710:
+SELECT * FROM binary_type;
+
+-- Display original values
+SET bytea_output = 'escape';
+
+--Testcase 711:
+SELECT * FROM binary_type;
+SET bytea_output = 'hex';
+
+--Testcase 712:
+DELETE FROM binary_type WHERE id = 3;
+
+-- Test data type casting (from binary to another types)
+-- binary to text
+--Testcase 700:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN belem TYPE text;
+--Testcase 701:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN barray TYPE text[];
+--Testcase 702:
+SELECT belem, barray FROM binary_type;
+
+-- binary to int
+--Testcase 703:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN belem TYPE int;
+--Testcase 704:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN barray TYPE int[];
+--Testcase 705:
+SELECT belem, barray FROM binary_type; -- failed
+
+--Testcase 706:
+DROP FOREIGN TABLE binary_type;
+
 --Testcase 668:
 DROP USER MAPPING FOR public SERVER dynamodb_server;
 --Testcase 669:

@@ -39,6 +39,9 @@ static ArrayType *dynamodb_convert_set_to_array(const Aws::Vector<Aws::String>, 
 												int *typemod, Oid pgtyp);
 static void dynamodb_convert_nested_object_to_json_string(StringInfo output,
 												Aws::DynamoDB::Model::AttributeValue dynamodbVal);
+static char *dynamodb_convert_bytebuf_to_string(Aws::Utils::ByteBuffer bytebuf);
+static Aws::Utils::ByteBuffer dynamodb_convert_string_to_bytebuf(const char* str);
+static char *dynamodb_convert_byte_datum_to_string(Datum value);
 
 /*
  * dynamodb_convert_set_to_array
@@ -109,6 +112,14 @@ dynamodb_convert_set_to_array(const Aws::Vector<Aws::String> val,
 				elmalign = 'd';
 				break;
 			}
+		case BYTEAARRAYOID:
+			{
+				elmtype = BYTEAOID;
+				elmlen = -1;
+				elmbyval = false;
+				elmalign = 'i';
+				break;
+			}
 		default:
 			{
 				elmtype = TEXTOID;
@@ -123,7 +134,8 @@ dynamodb_convert_set_to_array(const Aws::Vector<Aws::String> val,
 
 	for (const auto &item : val)
 	{
-		valueDatum = CStringGetDatum((char *) item.c_str());
+		char *var_str = pstrdup(item.c_str());
+		valueDatum = CStringGetDatum(var_str);
 		datumArr[i] = OidFunctionCall3(*typeinput, valueDatum,
 											ObjectIdGetDatum(InvalidOid),
 											Int32GetDatum(*typemod));
@@ -264,50 +276,47 @@ dynamodb_convert_nested_object_to_json_string(StringInfo output,
 			}
 		case Aws::DynamoDB::Model::ValueType::BYTEBUFFER:
 			{
-				char   *outputString = NULL;
-				Oid		outputFunctionId = InvalidOid;
-				bool	typeVarLength = false;
+				char 	*outputString = NULL;
+				Oid 	outputFunctionId = InvalidOid;
+				bool 	typeVarLength = false;
 				const Aws::Utils::ByteBuffer bytebuf = dynamodbVal.GetB();
-				size_t	size = bytebuf.GetLength();
-				Datum	valueDatum;
+				size_t 	size = bytebuf.GetLength();
+				Datum 	valueDatum = (Datum)palloc0(size + VARHDRSZ);
 
-				valueDatum = (Datum) palloc0(size + VARHDRSZ);
-				memcpy(VARDATA(valueDatum), (void *) bytebuf.GetUnderlyingData(), size);
+				memcpy(VARDATA(valueDatum), (void *)bytebuf.GetUnderlyingData(), size);
 				SET_VARSIZE(valueDatum, size + VARHDRSZ);
 
 				getTypeOutputInfo(BYTEAOID, &outputFunctionId, &typeVarLength);
 				outputString = OidOutputFunctionCall(outputFunctionId, valueDatum);
 
-				appendStringInfo(output, "%s", outputString);
+				dynamodb_append_string_literal_value(output, outputString);
 				break;
 			}
 		case Aws::DynamoDB::Model::ValueType::BYTEBUFFER_SET:
 			{
-				const Aws::Vector<Aws::Utils::ByteBuffer> val = dynamodbVal.GetBS();
-				bool	first = true;
+				const Aws::Vector<Aws::Utils::ByteBuffer> bytebuff = dynamodbVal.GetBS();
+				bool 	first = true;
 
 				appendStringInfoChar(output, '[');
 
-				for (const auto &item : val)
+				for (const auto &item : bytebuff)
 				{
-					char   *outputString = NULL;
-					Oid		outputFunctionId = InvalidOid;
-					bool	typeVarLength = false;
-					size_t	size = item.GetLength();
-					Datum	valueDatum;
+					char 	*outputString = NULL;
+					Oid 	outputFunctionId = InvalidOid;
+					bool 	typeVarLength = false;
+					size_t 	size = item.GetLength();
+					Datum 	valueDatum = (Datum)palloc0(size + VARHDRSZ);
 
 					if (!first)
 						appendStringInfoChar(output, ',');
 
-					valueDatum = (Datum) palloc0(size + VARHDRSZ);
-					memcpy(VARDATA(valueDatum), (void *) item.GetUnderlyingData(), size);
+					memcpy(VARDATA(valueDatum), (void *)item.GetUnderlyingData(), size);
 					SET_VARSIZE(valueDatum, size + VARHDRSZ);
 
 					getTypeOutputInfo(BYTEAOID, &outputFunctionId, &typeVarLength);
 					outputString = OidOutputFunctionCall(outputFunctionId, valueDatum);
 
-					appendStringInfo(output, "%s", outputString);
-
+					dynamodb_append_string_literal_value(output, outputString);
 					first = false;
 				}
 
@@ -452,20 +461,32 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 			}
 		case Aws::DynamoDB::Model::ValueType::BYTEBUFFER:
 			{
-				const Aws::Utils::ByteBuffer bytebuf = dynamodbVal.GetB();
-				size_t size = bytebuf.GetLength();
+				if (is_compatible_type(pgtyp, dynamodbVal.GetType()))
+				{
+					const Aws::Utils::ByteBuffer bytebuf = dynamodbVal.GetB();
 
-				valueDatum = (Datum) palloc0(size + VARHDRSZ);
-				memcpy(VARDATA(valueDatum), (void *) bytebuf.GetUnderlyingData(), size);
-				SET_VARSIZE(valueDatum, size + VARHDRSZ);
+					size_t 	size = bytebuf.GetLength();
+					valueDatum = (Datum)palloc0(size + VARHDRSZ);
+					memcpy(VARDATA(valueDatum), (void *)bytebuf.GetUnderlyingData(), size);
+					SET_VARSIZE(valueDatum, size + VARHDRSZ);
+					return valueDatum;
+				}
+				else
+				{
+					StringInfo buffer = makeStringInfo();
+
+					dynamodb_convert_nested_object_to_json_string(buffer, dynamodbVal);
+					valueDatum = CStringGetDatum(buffer->data);
+				}
 				break;
 			}
 		case Aws::DynamoDB::Model::ValueType::NUMBER:
 			{
-				Aws::String val = dynamodbVal.GetN();
-
 				if (is_compatible_type(pgtyp, dynamodbVal.GetType()))
-					valueDatum = CStringGetDatum((char *) val.c_str());
+				{
+					char *val = pstrdup(dynamodbVal.GetN().c_str());
+					valueDatum = CStringGetDatum(val);
+				}
 				else
 				{
 					StringInfo	buffer = makeStringInfo();
@@ -477,10 +498,12 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 			}
 		case Aws::DynamoDB::Model::ValueType::STRING:
 			{
-				Aws::String val = dynamodbVal.GetS();
-
 				if (is_compatible_type(pgtyp, dynamodbVal.GetType()))
-					valueDatum = CStringGetDatum((char *) val.c_str());
+				{
+					char *val = pstrdup(dynamodbVal.GetS().c_str());
+
+					valueDatum = CStringGetDatum(val);
+				}
 				else
 				{
 					StringInfo	buffer = makeStringInfo();
@@ -520,7 +543,11 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 		case Aws::DynamoDB::Model::ValueType::ATTRIBUTE_MAP:
 		case Aws::DynamoDB::Model::ValueType::ATTRIBUTE_LIST:
 			{
+#if PG_VERSION_NUM >= 170000
+				JsonLexContext lex;
+#else
 				JsonLexContext *lex;
+#endif
 				text	   *result;
 				StringInfo	buffer = makeStringInfo();
 
@@ -529,8 +556,14 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 				if (pgtyp == JSONOID)
 				{
 					result = cstring_to_text_with_len(buffer->data, buffer->len);
+#if PG_VERSION_NUM >= 170000
+					makeJsonLexContext(&lex, result, false);
+					pg_parse_json(&lex, &nullSemAction);
+					freeJsonLexContext(&lex);
+#else
 					lex = makeJsonLexContext(result, false);
 					pg_parse_json(lex, &nullSemAction);
+#endif
 					return PointerGetDatum(result);
 				}
 				else if (pgtyp == JSONBOID)
@@ -542,13 +575,18 @@ dynamodb_convert_to_pg(Oid pgtyp, int pgtypmod, Aws::DynamoDB::Model::AttributeV
 			}
 		case Aws::DynamoDB::Model::ValueType::BYTEBUFFER_SET:
 			{
-				const Aws::Utils::ByteBuffer bytebuf = dynamodbVal.GetB();
-				size_t size = bytebuf.GetLength();
+				const Aws::Vector<Aws::Utils::ByteBuffer> bytebuff = dynamodbVal.GetBS();
+				Aws::Vector<Aws::String> val;
+				ArrayType *arr;
 
-				valueDatum = (Datum) palloc0(size + VARHDRSZ);
-				memcpy(VARDATA(valueDatum), (void *) bytebuf.GetUnderlyingData(), size);
-				SET_VARSIZE(valueDatum, size + VARHDRSZ);
-				break;
+				for (const auto &item : bytebuff)
+				{
+					char *buff = dynamodb_convert_bytebuf_to_string(item);
+					val.push_back(buff);
+				}
+
+				arr = dynamodb_convert_set_to_array(val, &typeinput, &typemod, BYTEAARRAYOID);
+				return PointerGetDatum(arr);
 			}
 		default:
 			{
@@ -671,6 +709,10 @@ dynamodb_bind_array(Oid element_type, Datum value, Aws::Vector<Aws::String> *vec
 				outputString = (char *) "";
 			else
 				outputString = TextDatumGetCString(values[i]);
+		}
+		else if (element_type == BYTEAOID)
+		{
+			outputString = dynamodb_convert_byte_datum_to_string(values[i]);
 		}
 		else
 		{
@@ -835,6 +877,34 @@ dynamodb_bind_sql_var(Oid type, int attnum, Datum value, const char *query, bool
 				value1 = dynamodb_bind_json_value(root, NULL);
 				break;
 			}
+			case BYTEAOID:
+			{
+				Aws::Utils::ByteBuffer bytebuf;
+				char 	*bufptr = dynamodb_convert_byte_datum_to_string(value);
+
+				/* Convert string to bytebuf */
+				bytebuf = dynamodb_convert_string_to_bytebuf(bufptr);
+
+				value1.SetB(bytebuf);
+				break;
+			}
+			case BYTEAARRAYOID:
+			{
+				Aws::Vector<Aws::String> vectorValues;
+				Aws::Vector<Aws::Utils::ByteBuffer> vectorBinaryValues;
+
+				dynamodb_bind_array(BYTEAOID, value, &vectorValues);
+
+				/* Convert string vector to byte buffer vector */
+				for (const auto &item : vectorValues)
+				{
+					Aws::Utils::ByteBuffer bytebuf = dynamodb_convert_string_to_bytebuf(item.c_str());
+					vectorBinaryValues.push_back(bytebuf);
+				}
+
+				value1.SetBS(vectorBinaryValues);
+				break;
+			}
 		default:
 			{
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -844,4 +914,76 @@ dynamodb_bind_sql_var(Oid type, int attnum, Datum value, const char *query, bool
 	 		}
 	 	}
 	return value1;
+}
+
+/*
+ * dynamodb_convert_bytebuf_to_string
+ *
+ * Convert a byte buffer to a string
+ *
+ */
+static char *dynamodb_convert_bytebuf_to_string(Aws::Utils::ByteBuffer bytebuf)
+{
+	size_t 	size = bytebuf.GetLength();
+	char 	*buff = (char *)palloc0(size + 1);
+
+	/* Convert unsigned char array to char array */
+	for (size_t i = 0; i < size; i++)
+	{
+		buff[i] = bytebuf.GetItem(i);
+	}
+	buff[size] = 0;
+
+	return buff;
+}
+
+/*
+ * dynamodb_convert_string_to_bytebuf
+ *
+ * Convert a string to byte buffer
+ *
+ */
+static Aws::Utils::ByteBuffer dynamodb_convert_string_to_bytebuf(const char* str)
+{
+	size_t 	size = strlen(str);
+	unsigned char 	*uchar = (unsigned char*) palloc0(size + 1);
+
+	/* Convert char array to unsigned char array */
+	for (size_t i = 0; i < size; i++)
+	{
+		uchar[i] = str[i];
+	}
+	uchar[size] = 0;
+
+	return Aws::Utils::ByteBuffer(uchar, size);
+}
+
+/*
+ * dynamodb_convert_byte_datum_to_string
+ *
+ * Convert a bytea datum to string
+ *
+ */
+static char *dynamodb_convert_byte_datum_to_string(Datum value)
+{
+	int 	len;
+	char 	*dat = NULL;
+	char 	*bufptr;
+	char 	*result = DatumGetPointer(value);
+
+	if (VARATT_IS_1B(result))
+	{
+		len = VARSIZE_1B(result) - VARHDRSZ_SHORT;
+		dat = VARDATA_1B(result);
+	}
+	else
+	{
+		len = VARSIZE_4B(result) - VARHDRSZ;
+		dat = VARDATA_4B(result);
+	}
+
+	bufptr = (char *)palloc0(len + 1);
+	memcpy(bufptr, (char *)dat, len);
+
+	return bufptr;
 }

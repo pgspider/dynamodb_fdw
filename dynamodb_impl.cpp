@@ -49,6 +49,9 @@ extern "C"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
+#if PG_VERSION_NUM >= 160000
+#include "parser/parse_relation.h"
+#endif
 #include "utils/builtins.h"
 #include "utils/float.h"
 #include "utils/guc.h"
@@ -67,7 +70,11 @@ using namespace Aws::DynamoDB;
 #define DEFAULT_FDW_STARTUP_COST	100.0
 
 /* Default CPU cost to process 1 row (above and beyond cpu_tuple_cost). */
+#if PG_VERSION_NUM >= 170000
+#define DEFAULT_FDW_TUPLE_COST		0.2
+#else
 #define DEFAULT_FDW_TUPLE_COST		0.01
+#endif
 
 /* If no remote estimates, assume a sort costs 20% extra */
 #define DEFAULT_FDW_SORT_MULTIPLIER 1.2
@@ -86,7 +93,7 @@ enum FdwScanPrivateIndex
 	/* SQL statement to execute remotely (as a String node) */
 	FdwScanPrivateSelectSql,
 	/* Integer list of attribute numbers retrieved by the SELECT */
-	FdwScanPrivateRetrievedAttrs
+	FdwScanPrivateRetrievedAttrs,
 };
 
 /*
@@ -108,7 +115,7 @@ enum FdwModifyPrivateIndex
 	/* has-returning flag (as a Boolean node) */
 	FdwModifyPrivateHasReturning,
 	/* Integer list of attribute numbers retrieved by RETURNING */
-	FdwModifyPrivateRetrievedAttrs
+	FdwModifyPrivateRetrievedAttrs,
 };
 
 /* Struct for extra information passed to estimate_path_cost_size() */
@@ -507,6 +514,9 @@ dynamodbGetForeignPaths(PlannerInfo *root,
 								   NIL, /* no pathkeys */
 								   baserel->lateral_relids,
 								   NULL,	/* no extra plan */
+#if PG_VERSION_NUM >= 170000
+								   NIL, /* no fdw_restrictinfo list */
+#endif
 								   NIL);	/* no fdw_private list */
 	add_path(baserel, (Path *) path);
 
@@ -920,12 +930,29 @@ dynamodbAddForeignUpdateTargets(
 								RangeTblEntry *target_rte,
 								Relation target_relation)
 {
-	Oid       relid = RelationGetRelid(target_relation);
-	dynamodb_opt *opt;
-	opt = dynamodb_get_options(relid);
-	char *partition_key = opt->svr_partition_key;
-	char *sort_key = opt -> svr_sort_key;
-	TupleDesc	tupdesc = target_relation->rd_att;
+	Oid				relid = RelationGetRelid(target_relation);
+	dynamodb_opt   *opt;
+	char		   *partition_key;
+	char		   *sort_key;
+	TupleDesc		tupdesc = target_relation->rd_att;
+	Oid				userid;
+
+#if PG_VERSION_NUM < 160000
+	userid = target_rte->checkAsUser ? target_rte->checkAsUser : GetUserId();
+#else
+	if (target_rte->perminfoindex != 0)
+	{
+		RTEPermissionInfo *perminfo = getRTEPermissionInfo(root->parse->rteperminfos, target_rte);
+
+		userid = (perminfo != NULL && OidIsValid(perminfo->checkAsUser))? perminfo->checkAsUser : GetUserId();
+	}
+	else
+		userid = GetUserId();
+#endif
+
+	opt = dynamodb_get_options(relid, userid);
+	partition_key = opt->svr_partition_key;
+	sort_key = opt -> svr_sort_key;
 
 	if (IS_KEY_EMPTY(partition_key))
 		elog(ERROR, "dynamodb_fdw: The partition_key option has not been set");
@@ -987,6 +1014,7 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	dynamodb_opt   *opt;
 	char		   *partition_key;
 	char		   *sort_key;
+	Oid				userid;
 
 	initStringInfo(&sql);
 
@@ -998,7 +1026,27 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 	foreignTableId = RelationGetRelid(rel);
 	tupdesc = RelationGetDescr(rel);
 
-	opt = dynamodb_get_options(foreignTableId);
+	/*
+	 * For foreign update and delete PostgreSQL require a unique column to do that
+	 * operations. The postgres_fdw uses ctid to uniquely identify row to perform
+	 * foreign delete/update. But in mysql_fdw we don't have hidden column like
+	 * that so we make a requirement for first column to be unique. We are using
+	 * first column to uniquely identify the rows for UPDATE/DELETE operation.
+	 */
+#if PG_VERSION_NUM < 160000
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#else
+	if (rte->perminfoindex != 0)
+	{
+		RTEPermissionInfo *perminfo = getRTEPermissionInfo(root->parse->rteperminfos, rte);
+
+		userid = (perminfo != NULL && OidIsValid(perminfo->checkAsUser))? perminfo->checkAsUser : GetUserId();
+	}
+	else
+		userid = GetUserId();
+#endif
+
+	opt = dynamodb_get_options(foreignTableId, userid);
 	partition_key = opt->svr_partition_key;
 	sort_key = opt -> svr_sort_key;
 
@@ -1020,7 +1068,6 @@ dynamodbPlanForeignModify(PlannerInfo *root, ModifyTable *plan, Index resultRela
 
 	if (operation == CMD_INSERT || trigger_update)
 	{
-		TupleDesc	tupdesc = RelationGetDescr(rel);
 		int			attnum;
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
@@ -1645,26 +1692,40 @@ dynamodb_execute_foreign_modify(EState *estate,
 	int			bindnum = 0;
 	Relation    rel = resultRelInfo->ri_RelationDesc;
     Oid         foreignTableId = RelationGetRelid(rel);
-	dynamodb_opt *opt = dynamodb_get_options(foreignTableId);
-	char *partition_key = opt->svr_partition_key;
-	char *sort_key = opt -> svr_sort_key;
 	Aws::DynamoDB::Model::ExecuteStatementRequest req;
 	Aws::Vector<Aws::DynamoDB::Model::AttributeValue> values;
 	Aws::DynamoDB::Model::AttributeValue bindval;
 	Aws::DynamoDB::Model::ExecuteStatementOutcome outcome;
 
-	Form_pg_attribute att;
-	Oid			type;
+	Form_pg_attribute	att;
+	Oid					type;
+	Oid					userid;
+	dynamodb_opt	   *opt;
+	char			   *partition_key;
+	char			   *sort_key;
+
+#if PG_VERSION_NUM < 160000
+	RangeTblEntry  *rte;
+
+	rte = exec_rt_fetch(resultRelInfo->ri_RangeTableIndex, estate);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#else
+	userid = ExecGetResultRelCheckAsUser(resultRelInfo, estate);
+#endif
+
+	opt = dynamodb_get_options(foreignTableId, userid);
+	partition_key = opt->svr_partition_key;
+	sort_key = opt -> svr_sort_key;
 
 	/* Binding values */
 	foreach(lc, fmstate->target_attrs)
 	{
 		int		attnum = lfirst_int(lc) - 1;
-		Oid		type = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
+		Oid		atttypid = TupleDescAttr(slot->tts_tupleDescriptor, attnum)->atttypid;
 		bool	isnull;
 
 		value = slot_getattr(slot, attnum + 1, &isnull);
-		bindval = dynamodb_bind_sql_var(type, bindnum, value, fmstate->query, isnull);
+		bindval = dynamodb_bind_sql_var(atttypid, bindnum, value, fmstate->query, isnull);
 		values.push_back(bindval);
 		bindnum++;
 	}

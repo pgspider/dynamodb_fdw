@@ -152,7 +152,7 @@ static bool is_valid_option(const char *option, Oid context)
 /*
  * Fetch the options for a dynamodb_fdw foreign table.
  */
-dynamodb_opt *dynamodb_get_options(Oid foreignoid)
+dynamodb_opt *dynamodb_get_options(Oid foreignoid, Oid userid)
 {
 	UserMapping *f_mapping;
 	ForeignTable *f_table = NULL;
@@ -183,7 +183,7 @@ dynamodb_opt *dynamodb_get_options(Oid foreignoid)
 		options = list_concat(options, f_table->options);
 	options = list_concat(options, f_server->options);
 
-	f_mapping = GetUserMapping(GetUserId(), f_server->serverid);
+	f_mapping = GetUserMapping(userid, f_server->serverid);
 	options = list_concat(options, f_mapping->options);
 
 	/* Loop through the options, and get the server/port */
