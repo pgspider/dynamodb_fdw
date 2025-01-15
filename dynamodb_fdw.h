@@ -18,7 +18,7 @@
 #include "nodes/pathnodes.h"
 #include "utils/relcache.h"
 #include "catalog/pg_operator.h"
-#define CODE_VERSION 10300
+#define CODE_VERSION 10400
 
 /*
  * Options structure to store the dynamodb
@@ -101,7 +101,7 @@ extern int	dynamodb_set_transmission_modes(void);
 extern void dynamodb_reset_transmission_modes(int nestlevel);
 
 /* in option.c */
-extern dynamodb_opt *dynamodb_get_options(Oid foreigntableid);
+extern dynamodb_opt *dynamodb_get_options(Oid foreigntableid, Oid userid);
 
 /* in deparse.cpp */
 extern void dynamodb_classify_conditions(PlannerInfo *root,

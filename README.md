@@ -95,7 +95,7 @@ Supported platforms
 `dynamodb_fdw` was developed on Linux, and should run on any
 reasonably POSIX-compliant system.
 
-`dynamodb_fdw` is designed to be compatible with PostgreSQL 13 ~ 16.0.
+`dynamodb_fdw` is designed to be compatible with PostgreSQL 13 ~ 17.0.
 
 Installation
 ------------
@@ -200,13 +200,14 @@ Data type mapping
 | No | PostgreSQL | DynamoDB | Remark |
 |----|------------|----------|--------|
 | 1 | boolean | Boolean | N/A | 
-| 2 | bytea | Binary | PartiQL of DynamoDB does not have any way to represent binary data. Therefore, DynamoDB FDW only supports selecting Binary column. DynamoDB FDW does not support Binary column in `WHERE` clause. |
+| 2 | bytea | Binary | DynamoDB FDW does not support Binary column in `WHERE` clause. |
 | 3 | JSON/JSONB | Map | N/A |
 | 4 | NULL | Null | N/A |
 | 5 | smallint, integer, bigint, numeric, real, double precision | Number | N/A |
 | 6 | smallint\[\], integer\[\], bigint\[\], numeric\[\], real\[\], double precision\[\] | Number Set | N/A |
 | 7 | text character varying(n)\[\], varchar(n)\[\], character(n)\[\], char(n) \[\], text\[\] | String Set | N/A |
 | 8 | text character varying(n), varchar(n), character(n), char(n), text | String | N/A |
+| 9 | bytea[] | Binary Set | N/A |
 
 Identifier case handling
 ------------------------
@@ -298,7 +299,6 @@ Limitations
 -----------
 
 * Does not support `List` type of DynamoDB.
-* Only support `SELECT` the `Binary` type of DynamoDB. Does not support `WHERE` clause, `INSERT`, `UPDATE` statement with `Binary` type of DynamoDB.
 * For DynamoDB, 2 records can have the same attribute name but different data type. However, DynamoDB FDW does not support that case. User need to avoid using that case.
 * Does not support `COPY FROM` and foreign partition routing. The following error will be shown.
     `COPY and foreign partition routing not supported in dynamodb_fdw`

@@ -36,6 +36,7 @@ aws dynamodb delete-table --table-name test_jsonb_subscript --endpoint-url $DYNA
 aws dynamodb delete-table --table-name test_jsonb_subscript_text --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name repeat_json_tbl --endpoint-url $DYNAMODB_ENDPOINT
 aws dynamodb delete-table --table-name pg_input_is_valid_tbl --endpoint-url $DYNAMODB_ENDPOINT
+aws dynamodb delete-table --table-name binary_type --endpoint-url $DYNAMODB_ENDPOINT
 
 # for connection_validation.sql test
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
@@ -586,3 +587,12 @@ aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name J2_TBL --it
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name J2_TBL --item $'{"ID": {"N": "9"}, "q1": {"NULL": true}, "q2": {"N": "920.1"}}'
 aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name J2_TBL --item $'{"ID": {"N": "10"}, "q1": {"N": "123"}, "q2": {"N": "456"}}'
 
+# for pushdown.sql test: binary_type table
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT \
+        create-table --table-name binary_type \
+        --attribute-definitions AttributeName=id,AttributeType=N \
+        --key-schema AttributeName=id,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
+
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name binary_type --item $'{"id": {"N": "1"}, "belem": {"B": "aGVsbG8="}, "barray": {"BS": ["U3Vubnk=", "UmFpbnk="]}, "bmap": {"M": {"belem": {"B": "aGVsbG8="}, "barray": {"BS": ["U3Vubnk=", "UmFpbnk="]}}}, "blist":{"L":[{"B":"aGVsbG8="}, {"BS":["U3Vubnk=", "UmFpbnk="]}]}}'
+aws dynamodb --endpoint-url $DYNAMODB_ENDPOINT put-item --table-name binary_type --item $'{"id": {"N": "2"}, "belem": {"B": "Qm9uam91cg=="}, "barray": {"BS": ["cGx1dmlldXg=", "ZW5zb2xlaWxsZQ=="]}, "bmap": {"M": {"belem": {"B": "Qm9uam91cg=="}, "barray": {"BS": ["cGx1dmlldXg=", "ZW5zb2xlaWxsZQ=="]}}}, "blist":{"L":[{"B":"Qm9uam91cg=="}, {"BS":["cGx1dmlldXg=", "ZW5zb2xlaWxsZQ=="]}]}}'

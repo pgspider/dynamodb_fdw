@@ -21,9 +21,9 @@ PGFILEDESC = "dynamodb_fdw - foreign data wrapper for DynamoDB"
 SHLIB_LINK = -lm -lstdc++ -laws-cpp-sdk-core -laws-cpp-sdk-dynamodb
 
 EXTENSION = dynamodb_fdw
-DATA = dynamodb_fdw--1.0.sql
+DATA = dynamodb_fdw--1.0.sql dynamodb_fdw--1.0--1.1.sql
 
-REGRESS = server_options connection_validation pushdown extra/delete extra/insert extra/json extra/jsonb extra/select extra/update 
+REGRESS = server_options connection_validation dynamodb_fdw pushdown extra/delete extra/insert extra/json extra/jsonb extra/select extra/update 
 
 # EXTRA_CLEAN = sql/parquet_fdw.sql expected/parquet_fdw.out
 
@@ -40,12 +40,6 @@ ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-
-# PostgreSQL below 11 does not automatically add -fPIC or equivalent to C++
-# flags when building a shared library, have to do it here explicitely.
-ifeq ($(shell test $(VERSION_NUM) -lt 110000; echo $$?), 0)
-	override CXXFLAGS += $(CFLAGS_SL)
-endif
 else
 subdir = contrib/dynamodb_fdw
 top_builddir = ../..

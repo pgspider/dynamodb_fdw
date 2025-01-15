@@ -156,17 +156,14 @@ SELECT count(id) AS cnt FROM agg_tbl;
 
 --Testcase 19:
 EXPLAIN VERBOSE SELECT count(DISTINCT id) AS cnt FROM agg_tbl;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
- Aggregate  (cost=380.77..380.78 rows=1 width=8)
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=205.06..205.07 rows=1 width=8)
    Output: count(DISTINCT id)
-   ->  Sort  (cost=366.15..373.46 rows=2925 width=4)
-         Output: id
-         Sort Key: agg_tbl.id
-         ->  Foreign Scan on public.agg_tbl  (cost=100.00..197.75 rows=2925 width=4)
-               Output: id
-               Remote SQL: SELECT id FROM agg_tbl
-(8 rows)
+   ->  Foreign Scan on public.agg_tbl  (cost=100.00..197.75 rows=2925 width=4)
+         Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
+         Remote SQL: SELECT id FROM agg_tbl
+(5 rows)
 
 --Testcase 20:
 SELECT count(DISTINCT id) AS cnt FROM agg_tbl;
@@ -380,17 +377,14 @@ SELECT stddev_pop(score), stddev_samp(score), stddev(score) FROM agg_tbl WHERE i
 --Testcase 41:
 EXPLAIN VERBOSE
 SELECT count(DISTINCT id), max(description), min(name) FROM agg_tbl WHERE id <= 586878;
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Aggregate  (cost=142.23..142.24 rows=1 width=72)
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=129.29..129.30 rows=1 width=72)
    Output: count(DISTINCT id), max(description), min(name)
-   ->  Sort  (cost=139.26..140.01 rows=297 width=68)
-         Output: id, description, name
-         Sort Key: agg_tbl.id
-         ->  Foreign Scan on public.agg_tbl  (cost=100.00..127.06 rows=297 width=68)
-               Output: id, description, name
-               Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (id <= 586878)
-(8 rows)
+   ->  Foreign Scan on public.agg_tbl  (cost=100.00..127.06 rows=297 width=68)
+         Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
+         Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (id <= 586878)
+(5 rows)
 
 --Testcase 42:
 SELECT count(DISTINCT id), max(description), min(name) FROM agg_tbl WHERE id <= 586878;
@@ -508,7 +502,7 @@ SELECT id, count(score), sum(DISTINCT score) FROM agg_tbl WHERE description IS N
    Group Key: agg_tbl.id, agg_tbl.active
    ->  Sort  (cost=231.81..234.56 rows=1101 width=13)
          Output: id, active, score
-         Sort Key: agg_tbl.id, agg_tbl.active, agg_tbl.score
+         Sort Key: agg_tbl.id, agg_tbl.active
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..176.18 rows=1101 width=13)
                Output: id, active, score
                Filter: agg_tbl.active
@@ -538,7 +532,7 @@ SELECT string_agg(name, ':' ORDER BY name), string_agg(description, ',' ORDER BY
    Filter: (max(agg_tbl.id) >= 0)
    ->  Sort  (cost=179.99..182.21 rows=886 width=68)
          Output: name, description, id
-         Sort Key: agg_tbl.name, agg_tbl.description
+         Sort Key: agg_tbl.name
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..136.62 rows=886 width=68)
                Output: name, description, id
                Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (name IS NOT NULL)
@@ -562,17 +556,17 @@ SELECT string_agg(name, ':' ORDER BY name), string_agg(description, ',' ORDER BY
 --Testcase 55:
 EXPLAIN VERBOSE
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM agg_tbl WHERE description IS NOT NULL GROUP BY description HAVING min(id) <> 0 ORDER BY description;
-                                                                   QUERY PLAN                                                                   
-------------------------------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=162.01..162.51 rows=199 width=160)
-   Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description
-   Sort Key: agg_tbl.description
-   ->  HashAggregate  (cost=149.91..154.41 rows=199 width=160)
-         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
-         Group Key: agg_tbl.description
-         Filter: (min(agg_tbl.id) <> 0)
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ GroupAggregate  (cost=179.99..200.00 rows=199 width=160)
+   Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description
+   Group Key: agg_tbl.description
+   Filter: (min(agg_tbl.id) <> 0)
+   ->  Sort  (cost=179.99..182.21 rows=886 width=68)
+         Output: description, name, id
+         Sort Key: agg_tbl.description
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..136.62 rows=886 width=68)
-               Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
+               Output: description, name, id
                Remote SQL: SELECT id, name, description FROM agg_tbl WHERE (description IS NOT NULL)
 (10 rows)
 
@@ -669,13 +663,13 @@ SELECT events[0], string_agg(events[0], ' ' ORDER BY events[0]) FROM agg_tbl WHE
                                                              QUERY PLAN                                                              
 -------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate  (cost=217.21..232.25 rows=200 width=104)
-   Output: (events[0]), string_agg((events[0]), ' '::text ORDER BY (events[0])), score, events
+   Output: events[0], string_agg(events[0], ' '::text ORDER BY events[0]), score, events
    Group Key: agg_tbl.score, agg_tbl.events
    ->  Sort  (cost=217.21..220.35 rows=1254 width=40)
-         Output: score, events, (events[0])
-         Sort Key: agg_tbl.score, agg_tbl.events, (agg_tbl.events[0])
+         Output: score, events
+         Sort Key: agg_tbl.score, agg_tbl.events
          ->  Foreign Scan on public.agg_tbl  (cost=100.00..152.68 rows=1254 width=40)
-               Output: score, events, events[0]
+               Output: score, events
                Remote SQL: SELECT score, events FROM agg_tbl WHERE (description IS NOT NULL) AND score NOT IN (221.12, 0.21, 313.12)
 (9 rows)
 
@@ -3202,18 +3196,18 @@ SELECT id, name, description FROM mixed_types WHERE id IN (SELECT id FROM mixed_
 --Testcase 329:
 EXPLAIN VERBOSE 
 SELECT json_agg((name, '!@!*')), jsonb_agg((name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23') FROM mixed_types WHERE description IS NOT NULL GROUP BY name, description ORDER BY description LIMIT 1;
-                                                                         QUERY PLAN                                                                         
-------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=154.91..154.91 rows=1 width=192)
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=179.99..180.09 rows=1 width=192)
    Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
-   ->  Sort  (cost=154.91..155.41 rows=200 width=192)
-         Output: (json_agg(ROW(name, '!@!*'))), (jsonb_agg(ROW(name, 'varr'))), (json_object_agg(id, 'x')), (jsonb_object_agg(id, '23')), description, name
-         Sort Key: mixed_types.description
-         ->  HashAggregate  (cost=149.91..153.91 rows=200 width=192)
-               Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
-               Group Key: mixed_types.description, mixed_types.name
+   ->  GroupAggregate  (cost=179.99..199.50 rows=200 width=192)
+         Output: json_agg(ROW(name, '!@!*')), jsonb_agg(ROW(name, 'varr')), json_object_agg(id, 'x'), jsonb_object_agg(id, '23'), description, name
+         Group Key: mixed_types.description, mixed_types.name
+         ->  Sort  (cost=179.99..182.21 rows=886 width=68)
+               Output: description, name, id
+               Sort Key: mixed_types.description, mixed_types.name
                ->  Foreign Scan on public.mixed_types  (cost=100.00..136.62 rows=886 width=68)
-                     Output: id, score, numbers, name, color, active, active_lock_reason, created_at, events, description, teams
+                     Output: description, name, id
                      Remote SQL: SELECT id, name, description FROM mixed_types WHERE (description IS NOT NULL)
 (11 rows)
 
@@ -4051,17 +4045,17 @@ SELECT sum((friends->'login'->>'ID')::int + (friends->'login'->>'ID')::int) + 3,
 --Testcase 397:
 EXPLAIN VERBOSE 
 SELECT min(friends->'login'->>'ID'), min(friends->'login'->>'age'), count(DISTINCT friends->'login'->>'isUpdated') FROM students WHERE (friends->'login'->>'isUpdated')::boolean IN (SELECT (friends->'class_info'->>'isAtDorm')::boolean FROM students) GROUP BY "ID", name HAVING max((friends->'login'->>'age')::int) < 50;
-                                                                                                                  QUERY PLAN                                                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                 QUERY PLAN                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate  (cost=359.00..399.32 rows=67 width=108)
-   Output: min(((students.friends -> 'login'::text) ->> 'ID'::text)), min(((students.friends -> 'login'::text) ->> 'age'::text)), count(DISTINCT (((students.friends -> 'login'::text) ->> 'isUpdated'::text))), students."ID", students.name
+   Output: min(((students.friends -> 'login'::text) ->> 'ID'::text)), min(((students.friends -> 'login'::text) ->> 'age'::text)), count(DISTINCT ((students.friends -> 'login'::text) ->> 'isUpdated'::text)), students."ID", students.name
    Group Key: students."ID", students.name
    Filter: (max((((students.friends -> 'login'::text) ->> 'age'::text))::integer) < 50)
    ->  Sort  (cost=359.00..361.22 rows=890 width=68)
-         Output: students."ID", students.name, students.friends, (((students.friends -> 'login'::text) ->> 'isUpdated'::text))
-         Sort Key: students."ID", students.name, (((students.friends -> 'login'::text) ->> 'isUpdated'::text))
+         Output: students."ID", students.name, students.friends
+         Sort Key: students."ID", students.name
          ->  Hash Join  (cost=257.56..315.40 rows=890 width=68)
-               Output: students."ID", students.name, students.friends, ((students.friends -> 'login'::text) ->> 'isUpdated'::text)
+               Output: students."ID", students.name, students.friends
                Inner Unique: true
                Hash Cond: ((((students.friends -> 'login'::text) ->> 'isUpdated'::text))::boolean = (((students_1.friends -> 'class_info'::text) ->> 'isAtDorm'::text))::boolean)
                ->  Foreign Scan on public.students  (cost=100.00..136.70 rows=890 width=68)
@@ -4382,19 +4376,19 @@ SELECT sum((friends->'login'->>'ID')::int) + (friends->'login'->>'ID')::int + 3,
 --Testcase 417:
 EXPLAIN VERBOSE 
 SELECT min(friends->'login'->>'ID'), min(friends->'login'->>'age'), count(DISTINCT friends->'login'->>'isUpdated') FROM students WHERE (friends->'login'->>'isUpdated')::boolean IN (SELECT (friends->'class_info'->>'isAtDorm')::boolean FROM students) GROUP BY "ID", name HAVING max((friends->'login'->>'age')::int) < 50 LIMIT 1;
-                                                                                                                     QUERY PLAN                                                                                                                     
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                    QUERY PLAN                                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit  (cost=359.00..359.60 rows=1 width=108)
-   Output: (min(((students.friends -> 'login'::text) ->> 'ID'::text))), (min(((students.friends -> 'login'::text) ->> 'age'::text))), (count(DISTINCT (((students.friends -> 'login'::text) ->> 'isUpdated'::text)))), students."ID", students.name
+   Output: (min(((students.friends -> 'login'::text) ->> 'ID'::text))), (min(((students.friends -> 'login'::text) ->> 'age'::text))), (count(DISTINCT ((students.friends -> 'login'::text) ->> 'isUpdated'::text))), students."ID", students.name
    ->  GroupAggregate  (cost=359.00..399.32 rows=67 width=108)
-         Output: min(((students.friends -> 'login'::text) ->> 'ID'::text)), min(((students.friends -> 'login'::text) ->> 'age'::text)), count(DISTINCT (((students.friends -> 'login'::text) ->> 'isUpdated'::text))), students."ID", students.name
+         Output: min(((students.friends -> 'login'::text) ->> 'ID'::text)), min(((students.friends -> 'login'::text) ->> 'age'::text)), count(DISTINCT ((students.friends -> 'login'::text) ->> 'isUpdated'::text)), students."ID", students.name
          Group Key: students."ID", students.name
          Filter: (max((((students.friends -> 'login'::text) ->> 'age'::text))::integer) < 50)
          ->  Sort  (cost=359.00..361.22 rows=890 width=68)
-               Output: students."ID", students.name, students.friends, (((students.friends -> 'login'::text) ->> 'isUpdated'::text))
-               Sort Key: students."ID", students.name, (((students.friends -> 'login'::text) ->> 'isUpdated'::text))
+               Output: students."ID", students.name, students.friends
+               Sort Key: students."ID", students.name
                ->  Hash Join  (cost=257.56..315.40 rows=890 width=68)
-                     Output: students."ID", students.name, students.friends, ((students.friends -> 'login'::text) ->> 'isUpdated'::text)
+                     Output: students."ID", students.name, students.friends
                      Inner Unique: true
                      Hash Cond: ((((students.friends -> 'login'::text) ->> 'isUpdated'::text))::boolean = (((students_1.friends -> 'class_info'::text) ->> 'isAtDorm'::text))::boolean)
                      ->  Foreign Scan on public.students  (cost=100.00..136.70 rows=890 width=68)
@@ -7417,6 +7411,216 @@ DROP FOREIGN TABLE classes;
 DROP FOREIGN TABLE J1_TBL;
 --Testcase 667:
 DROP FOREIGN TABLE J2_TBL;
+--Testcase 683:
+CREATE FOREIGN TABLE binary_type (
+    id int,
+    belem bytea,
+    barray bytea[],
+    bmap jsonb,
+    blist jsonb
+)
+SERVER dynamodb_server OPTIONS (table_name 'binary_type', partition_key 'id');
+-- Display original values
+SET bytea_output = 'escape';
+--Testcase 692:
+EXPLAIN VERBOSE
+SELECT * FROM binary_type;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Foreign Scan on public.binary_type  (cost=100.00..125.75 rows=525 width=132)
+   Output: id, belem, barray, bmap, blist
+   Remote SQL: SELECT id, belem, barray, bmap, blist FROM binary_type
+(3 rows)
+
+--Testcase 693:
+SELECT * FROM binary_type;
+ id |  belem  |        barray         |                            bmap                            |                  blist                  
+----+---------+-----------------------+------------------------------------------------------------+-----------------------------------------
+  2 | Bonjour | {ensoleille,pluvieux} | {"belem": "Bonjour", "barray": ["ensoleille", "pluvieux"]} | ["Bonjour", ["ensoleille", "pluvieux"]]
+  1 | hello   | {Rainy,Sunny}         | {"belem": "hello", "barray": ["Rainy", "Sunny"]}           | ["hello", ["Rainy", "Sunny"]]
+(2 rows)
+
+-- Display hex values
+SET bytea_output = 'hex';
+--Testcase 684:
+EXPLAIN VERBOSE
+SELECT * FROM binary_type;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Foreign Scan on public.binary_type  (cost=100.00..125.75 rows=525 width=132)
+   Output: id, belem, barray, bmap, blist
+   Remote SQL: SELECT id, belem, barray, bmap, blist FROM binary_type
+(3 rows)
+
+--Testcase 685:
+SELECT * FROM binary_type;
+ id |      belem       |                      barray                       |                                             bmap                                             |                                   blist                                   
+----+------------------+---------------------------------------------------+----------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+  2 | \x426f6e6a6f7572 | {"\\x656e736f6c65696c6c65","\\x706c757669657578"} | {"belem": "\\x426f6e6a6f7572", "barray": ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]} | ["\\x426f6e6a6f7572", ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]]
+  1 | \x68656c6c6f     | {"\\x5261696e79","\\x53756e6e79"}                 | {"belem": "\\x68656c6c6f", "barray": ["\\x5261696e79", "\\x53756e6e79"]}                     | ["\\x68656c6c6f", ["\\x5261696e79", "\\x53756e6e79"]]
+(2 rows)
+
+--Testcase 686:
+EXPLAIN VERBOSE
+SELECT barray[1], barray[2] FROM binary_type;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Foreign Scan on public.binary_type  (cost=100.00..153.86 rows=1462 width=64)
+   Output: barray[1], barray[2]
+   Remote SQL: SELECT barray FROM binary_type
+(3 rows)
+
+--Testcase 687:
+SELECT barray[1], barray[2] FROM binary_type;
+         barray         |       barray       
+------------------------+--------------------
+ \x656e736f6c65696c6c65 | \x706c757669657578
+ \x5261696e79           | \x53756e6e79
+(2 rows)
+
+--Testcase 688:
+EXPLAIN VERBOSE
+SELECT bmap['belem'], bmap['barray'] FROM binary_type;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Foreign Scan on public.binary_type  (cost=100.00..153.86 rows=1462 width=64)
+   Output: bmap['belem'::text], bmap['barray'::text]
+   Remote SQL: SELECT bmap FROM binary_type
+(3 rows)
+
+--Testcase 689:
+SELECT bmap['belem'], bmap['barray'] FROM binary_type;
+        bmap         |                        bmap                        
+---------------------+----------------------------------------------------
+ "\\x426f6e6a6f7572" | ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]
+ "\\x68656c6c6f"     | ["\\x5261696e79", "\\x53756e6e79"]
+(2 rows)
+
+--Testcase 690:
+EXPLAIN VERBOSE
+SELECT blist[0], blist[1] FROM binary_type;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Foreign Scan on public.binary_type  (cost=100.00..153.86 rows=1462 width=64)
+   Output: blist[0], blist[1]
+   Remote SQL: SELECT blist FROM binary_type
+(3 rows)
+
+--Testcase 691:
+SELECT blist[0], blist[1] FROM binary_type;
+        blist        |                       blist                        
+---------------------+----------------------------------------------------
+ "\\x426f6e6a6f7572" | ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]
+ "\\x68656c6c6f"     | ["\\x5261696e79", "\\x53756e6e79"]
+(2 rows)
+
+-- Test modification
+--Testcase 694:
+INSERT INTO binary_type(id, belem, barray) VALUES (3, 'Building'::bytea, '{"Red", "Yellow"}'::bytea[]);
+--Testcase 695:
+SELECT * FROM binary_type;
+ id |       belem        |                      barray                       |                                             bmap                                             |                                   blist                                   
+----+--------------------+---------------------------------------------------+----------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+  2 | \x426f6e6a6f7572   | {"\\x656e736f6c65696c6c65","\\x706c757669657578"} | {"belem": "\\x426f6e6a6f7572", "barray": ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]} | ["\\x426f6e6a6f7572", ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]]
+  1 | \x68656c6c6f       | {"\\x5261696e79","\\x53756e6e79"}                 | {"belem": "\\x68656c6c6f", "barray": ["\\x5261696e79", "\\x53756e6e79"]}                     | ["\\x68656c6c6f", ["\\x5261696e79", "\\x53756e6e79"]]
+  3 | \x4275696c64696e67 | {"\\x526564","\\x59656c6c6f77"}                   |                                                                                              | 
+(3 rows)
+
+-- Display original values
+SET bytea_output = 'escape';
+--Testcase 707:
+SELECT * FROM binary_type;
+ id |  belem   |        barray         |                            bmap                            |                  blist                  
+----+----------+-----------------------+------------------------------------------------------------+-----------------------------------------
+  2 | Bonjour  | {ensoleille,pluvieux} | {"belem": "Bonjour", "barray": ["ensoleille", "pluvieux"]} | ["Bonjour", ["ensoleille", "pluvieux"]]
+  1 | hello    | {Rainy,Sunny}         | {"belem": "hello", "barray": ["Rainy", "Sunny"]}           | ["hello", ["Rainy", "Sunny"]]
+  3 | Building | {Red,Yellow}          |                                                            | 
+(3 rows)
+
+SET bytea_output = 'hex';
+--Testcase 696:
+UPDATE binary_type SET belem = 'Tower'::bytea, barray = '{"Blue", "Green"}'::bytea[] WHERE id = 3;
+--Testcase 697:
+SELECT * FROM binary_type;
+ id |      belem       |                      barray                       |                                             bmap                                             |                                   blist                                   
+----+------------------+---------------------------------------------------+----------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+  2 | \x426f6e6a6f7572 | {"\\x656e736f6c65696c6c65","\\x706c757669657578"} | {"belem": "\\x426f6e6a6f7572", "barray": ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]} | ["\\x426f6e6a6f7572", ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]]
+  1 | \x68656c6c6f     | {"\\x5261696e79","\\x53756e6e79"}                 | {"belem": "\\x68656c6c6f", "barray": ["\\x5261696e79", "\\x53756e6e79"]}                     | ["\\x68656c6c6f", ["\\x5261696e79", "\\x53756e6e79"]]
+  3 | \x546f776572     | {"\\x426c7565","\\x477265656e"}                   |                                                                                              | 
+(3 rows)
+
+-- Display original values
+SET bytea_output = 'escape';
+--Testcase 708:
+SELECT * FROM binary_type;
+ id |  belem  |        barray         |                            bmap                            |                  blist                  
+----+---------+-----------------------+------------------------------------------------------------+-----------------------------------------
+  2 | Bonjour | {ensoleille,pluvieux} | {"belem": "Bonjour", "barray": ["ensoleille", "pluvieux"]} | ["Bonjour", ["ensoleille", "pluvieux"]]
+  1 | hello   | {Rainy,Sunny}         | {"belem": "hello", "barray": ["Rainy", "Sunny"]}           | ["hello", ["Rainy", "Sunny"]]
+  3 | Tower   | {Blue,Green}          |                                                            | 
+(3 rows)
+
+SET bytea_output = 'hex';
+--Testcase 698:
+DELETE FROM binary_type WHERE id = 3;
+--Testcase 699:
+SELECT * FROM binary_type;
+ id |      belem       |                      barray                       |                                             bmap                                             |                                   blist                                   
+----+------------------+---------------------------------------------------+----------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+  2 | \x426f6e6a6f7572 | {"\\x656e736f6c65696c6c65","\\x706c757669657578"} | {"belem": "\\x426f6e6a6f7572", "barray": ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]} | ["\\x426f6e6a6f7572", ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]]
+  1 | \x68656c6c6f     | {"\\x5261696e79","\\x53756e6e79"}                 | {"belem": "\\x68656c6c6f", "barray": ["\\x5261696e79", "\\x53756e6e79"]}                     | ["\\x68656c6c6f", ["\\x5261696e79", "\\x53756e6e79"]]
+(2 rows)
+
+-- Insert hex value
+--Testcase 709:
+INSERT INTO binary_type(id, belem, barray) VALUES (3, '\x4275696c64696e67', '{"\\x526564","\\x59656c6c6f77"}');
+ --Testcase 710:
+SELECT * FROM binary_type;
+ id |       belem        |                      barray                       |                                             bmap                                             |                                   blist                                   
+----+--------------------+---------------------------------------------------+----------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+  2 | \x426f6e6a6f7572   | {"\\x656e736f6c65696c6c65","\\x706c757669657578"} | {"belem": "\\x426f6e6a6f7572", "barray": ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]} | ["\\x426f6e6a6f7572", ["\\x656e736f6c65696c6c65", "\\x706c757669657578"]]
+  1 | \x68656c6c6f       | {"\\x5261696e79","\\x53756e6e79"}                 | {"belem": "\\x68656c6c6f", "barray": ["\\x5261696e79", "\\x53756e6e79"]}                     | ["\\x68656c6c6f", ["\\x5261696e79", "\\x53756e6e79"]]
+  3 | \x4275696c64696e67 | {"\\x526564","\\x59656c6c6f77"}                   |                                                                                              | 
+(3 rows)
+
+-- Display original values
+SET bytea_output = 'escape';
+--Testcase 711:
+SELECT * FROM binary_type;
+ id |  belem   |        barray         |                            bmap                            |                  blist                  
+----+----------+-----------------------+------------------------------------------------------------+-----------------------------------------
+  2 | Bonjour  | {ensoleille,pluvieux} | {"belem": "Bonjour", "barray": ["ensoleille", "pluvieux"]} | ["Bonjour", ["ensoleille", "pluvieux"]]
+  1 | hello    | {Rainy,Sunny}         | {"belem": "hello", "barray": ["Rainy", "Sunny"]}           | ["hello", ["Rainy", "Sunny"]]
+  3 | Building | {Red,Yellow}          |                                                            | 
+(3 rows)
+
+SET bytea_output = 'hex';
+--Testcase 712:
+DELETE FROM binary_type WHERE id = 3;
+-- Test data type casting (from binary to another types)
+-- binary to text
+--Testcase 700:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN belem TYPE text;
+--Testcase 701:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN barray TYPE text[];
+--Testcase 702:
+SELECT belem, barray FROM binary_type;
+        belem        |                      barray                       
+---------------------+---------------------------------------------------
+ "\\x426f6e6a6f7572" | {"\\x656e736f6c65696c6c65","\\x706c757669657578"}
+ "\\x68656c6c6f"     | {"\\x5261696e79","\\x53756e6e79"}
+(2 rows)
+
+-- binary to int
+--Testcase 703:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN belem TYPE int;
+--Testcase 704:
+ALTER FOREIGN TABLE binary_type ALTER COLUMN barray TYPE int[];
+--Testcase 705:
+SELECT belem, barray FROM binary_type; -- failed
+ERROR:  invalid input syntax for type integer: ""\\x426f6e6a6f7572""
+--Testcase 706:
+DROP FOREIGN TABLE binary_type;
 --Testcase 668:
 DROP USER MAPPING FOR public SERVER dynamodb_server;
 --Testcase 669:

@@ -10,6 +10,11 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include <aws/dynamodb/DynamoDBClient.h>
+#include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProvider.h>
+
 extern "C"
 {
 #include "postgres.h"
@@ -28,10 +33,6 @@ extern "C"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 }
-
-#include <aws/dynamodb/DynamoDBClient.h>
-#include <aws/core/Aws.h>
-#include <aws/core/auth/AWSCredentialsProvider.h>
 
 static Aws::SDKOptions *aws_sdk_options;
 
@@ -201,7 +202,7 @@ static Aws::DynamoDB::DynamoDBClient *
 dynamodb_create_connection(ForeignServer *server, UserMapping *user)
 {
 	Aws::DynamoDB::DynamoDBClient	   *volatile conn = NULL;
-	dynamodb_opt *opt = dynamodb_get_options(server->serverid);
+	dynamodb_opt *opt = dynamodb_get_options(server->serverid, user->userid);
 
 	/*
 	 * Extract options from FDW objects.
